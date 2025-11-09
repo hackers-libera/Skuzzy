@@ -1,0 +1,34 @@
+name: libera
+host: irc.ipv4.libera.chat:6697
+nick: 'Skuzzy'
+sasluser: 'Skuzzy'
+saslpassword: 'changeme'
+nickservusername: 'Skuzzy'
+nickservpassword: 'changeme'
+sys_prompt_global_suffix: 'Your response should be less than 800 characters long.'
+deepseek_api_key: 'changeme'
+llms:
+  - deepseek:
+    name: deepseek
+    type: deepseek
+    model: deepseekchat
+channels:
+  - hackers:
+    name: '#hackers'
+    llm: deepseek
+    sys_prompts_enabled: [default,greet]
+  - malware:
+    name: '##malware'
+    llm: deepseek
+    sys_prompts_enabled: [default,greet]
+  - testchan:
+    name: '#skuzzy'
+    llm: deepseek
+    sys_prompts_enabled: [default,greet]   
+  - bettola:
+    name: '#bettola'
+    llm: deepseek
+    sys_prompts_enabled: [default,greet]  
+sys_prompts:
+  greet: Greet users in an IRC channel, be original. The user is {USER} the channel is  {CHANNEL}
+  default: https://raw.githubusercontent.com/hackers-libera/Skuzzy/refs/heads/main/default.txt
