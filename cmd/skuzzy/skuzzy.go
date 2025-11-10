@@ -30,6 +30,7 @@ func server(configuration string) {
 	if err != nil {
 		return
 	}
+	go ReminderHandler(settings) /* Start reminder handler goroutine for this server. */
 	setupLogging(settings)
 	log.Printf("Loaded settings for %v:\n%v\n", settings.Name, settings)
 	for {

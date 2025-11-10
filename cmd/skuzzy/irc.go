@@ -9,10 +9,8 @@ import (
 	"net"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 type Connection struct {
@@ -109,7 +107,7 @@ func mentioned(nick string, query string) bool {
 }
 
 /* Regex to parse reminder requests. */
-var rReminder = regexp.MustCompile(`(?i)remind me in (\d+)\s+(minute|minutes|hour|hours) to (.+)`)
+var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -209,54 +207,18 @@ func irc_loop(settings *ServerConfig) {
 							reset := false
 
 							var handledAsReminder bool
-							/* Check for reminder request. */
-							if matches:= rReminder.FindStringSubmatch(query); len(matches) == 4 {
-								duration, err := strconv.Atoi(matches[1])
-								if err != nil {
-									log.Printf("Error parsing reminder duration: %v", err)
-									send_irc(settings.Name, from_channel, user+": Sorry, I couldn't " +
-													"understand the duration for your reminder.")
-									/* Don't continue. LLM needs to provide a response. */
-								} else {
-									unit := matches[2]
-									reminderMessage := matches[3]
-
-									var dur time.Duration
-									switch strings.ToLower(unit) {
-									case "minute", "minutes":
-										dur = time.Duration(duration) * time.Minute
-									case "hour", "hours":
-										dur = time.Duration(duration) * time.Hour
-									default:
-										send_irc(settings.Name, from_channel, user+": Sorry, I only " +
-														"understand reminders in minutes or hours.")
-										/* Don't continue, want an LLM response. */
-									}
-
-									reminder := &Reminder {
-										Server:		settings.Name,
-										Channel:	from_channel,
-										User: 		user,
-										Message:	reminderMessage,
-										EndTime:	time.Now().Add(dur),
-									}
-									AddReminder(settings, reminder) /* Pass settings. */
-
-									/* Send DeepseekRequest for reminder confirmation. */
-									req := DeepseekRequest {
-										channel:		from_channel,
-										request:		fmt.Sprintf("You have scheduled a reminder for " +
-																						"%s in %s to %s.", user,
-																						matches[1]+""+matches[2], reminderMessage),
-										sysprompt: "You are a helpful assistant. " +
-															 "Confirm to the user that their reminder " +
-															 "has been scheduled in your unique style.",
-										PromptName: "reminder_confirm",
-									}
-									DeepseekQueue <- req
-									log.Printf("Deepseek reminder confirmation query:\n%v\n", req)
-									handledAsReminder = true
+							/* Check for reminder keyword. */
+							if rReminder.MatchString(query) {
+								req := DeepseekRequest {
+									channel:				from_channel,
+									request:				query,
+									PromptName:			"reminder_parse",
+									OriginalQuery:	query,
+									User:						user,
 								}
+								DeepseekQueue <- req
+								log.Printf("Deepseek reminder parsing query:\n%v\n", req)
+								handledAsReminder = true
 							}
 							
 							if !handledAsReminder {
@@ -281,7 +243,7 @@ func irc_loop(settings *ServerConfig) {
 														"reminder request.")
 								} else {
 
-									req := DeepseekRequest{from_channel, text, query, reload, reset, ""}
+									req := DeepseekRequest{from_channel, text, query, reload, reset, "", query, user}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}

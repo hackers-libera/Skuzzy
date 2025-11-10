@@ -20,12 +20,14 @@ var SysPrompts = make(map[string]string)
 var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
-	channel   	string
-	sysprompt 	string
-	request   	string
-	reload    	bool
-	reset     	bool
-	PromptName	string
+	channel   		string
+	sysprompt 		string
+	request   		string
+	reload    		bool
+	reset     		bool
+	PromptName		string
+	OriginalQuery string /* Store orig query for re-processing if needed. */
+	User					string /* Going to need the user who sent the message too. */
 }
 
 var DeepseekQueue = make(chan DeepseekRequest)
@@ -50,12 +52,19 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 
 		/* Determine sysprompt to use based on PromptName. */
 		currentSysPrompt := req.sysprompt
-		if req.PromptName != "" {
-			/*
-		   * TODO: Here we can lookup a specific prompt if provided.
-			 * For now we can just use the default if specified isn't found.
-		   * Could add a map later for specific prompts.
-		   */
+		if req.PromptName == "reminder_parse" {
+			/* Specific prompt for parsing reminders. */
+			currentSysPrompt = "You are a reminder parsing assistant. Your only job " +
+													"is to  analyse the following text and extract the " +
+													"duration and the reminder message. " +
+													"Respond ONLY with a JSON object with two fields: " +
+													"\"is_reminder\" (boolean), \"duration_minutes\" (integer) " +
+													"and \"reminder_message\" (string). Convert all " +
+													"durations (e.g., hours) to minutes. If you cannot " +
+													"determine the duration or message, set \"is_reminder\" " +
+													"to false. Example: " +
+													"{\"is_reminder\": true, \"duration_minutes\": 120, " +
+													"\"reminder_message\": \"Get food!\"}"
 		}
 
 		request := &deepseek.ChatCompletionRequest{
@@ -75,9 +84,17 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		}
 
 		deepseek_response := response.Choices[0].Message.Content
-		log.Printf("Deepseek response:%s\n", deepseek_response)
-		send_irc(settings.Name, req.channel, deepseek_response)
-	}
+		if req.PromptName == "reminder_parse" {
+			/* Send LLM JSON response to the ReminderParseQueue. */
+			ReminderParseQueue <- struct {
+				Result			string
+				OriginalReq	DeepseekRequest
+			}{Result: deepseek_response, OriginalReq: req}
+		} else {
+			log.Printf("Deepseek response:%s\n", deepseek_response)
+			send_irc(settings.Name, req.channel, deepseek_response)
+		}
+	} 
 }
 
 func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {
