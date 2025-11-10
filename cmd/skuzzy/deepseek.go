@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"sync" /* For RWMutex. */
     deepseek "github.com/cohesion-org/deepseek-go"
 
 )
@@ -16,6 +17,7 @@ import (
 var rGreet, _ = regexp.Compile(`(?i)(hi+$|howdy$|hello$|hey+$|hai+$|ahoy|greetings$)[\. ]*`)
 
 var SysPrompts = make(map[string]string)
+var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
 	channel   string
@@ -67,6 +69,8 @@ func Deepseek(settings ServerConfig, llm LLM) {
 
 func FindPromptDeepseek(settings ServerConfig, from_channel string, query string) (string, string) {
 	prefix := settings.Name + "/" + from_channel
+	SysPromptsMutex.RLock()
+	defer SysPromptsMutex.RUnlock()
 	for key, value := range SysPrompts {
 		if strings.HasPrefix(key, prefix) {
 			if strings.HasSuffix(key, "/greet") && rGreet.MatchString(query) {
@@ -83,6 +87,8 @@ func FindPromptDeepseek(settings ServerConfig, from_channel string, query string
 
 func LoadSysPrompts(settings ServerConfig) {
 
+	SysPromptsMutex.Lock()
+	defer SysPromptsMutex.Unlock()
 	for k, text := range settings.SysPrompts {
 		if strings.HasPrefix(strings.ToLower(text), "https://") {
 			text = HttpsFetch(text)

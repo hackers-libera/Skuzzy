@@ -9,6 +9,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"sync"
 )
 
 type Connection struct {
@@ -16,6 +17,7 @@ type Connection struct {
 }
 
 var Connections = make(map[string]Connection)
+var ConnectionsMutex = sync.RWMutex{}
 
 func send_irc(server string, channel string, message string) {
 	log.Printf("Sending to %v/%v:%v\n", server, channel, message)
@@ -46,7 +48,9 @@ func send_irc(server string, channel string, message string) {
 
 		msg = fmt.Sprintf("%s\r\n", message)
 	}
+	ConnectionsMutex.RLock()
 	send_irc_raw(Connections[server], msg)
+	ConnectionsMutex.RUnlock()
 
 	if remaining_message != "" {
 		send_irc(server, channel, remaining_message)
@@ -74,21 +78,25 @@ func irc_connect(settings ServerConfig) error {
 		log.Printf("[%v] TLS connection to %v failed:%v", settings.Name, settings.Host, err)
 		return err
 	}
+	ConnectionsMutex.Lock()
 	Connections[settings.Name] = Connection{conn}
+	ConnectionsMutex.Unlock()
 	Server = settings.Name
 
 	return nil
 }
 
-func irc_disconnect(server_name string) {
-	conn := Connections[server_name]
-	conn.cx.Close()
-}
-
 func CloseConnections() {
-	for name := range Connections {
+	ConnectionsMutex.Lock() /* We want a write lock to safely iterate and modify the map. */
+	defer ConnectionsMutex.Unlock()
+	for name, conn := range Connections {
 		log.Printf("Closing %v\n", name)
-		irc_disconnect(name)
+		conn.cx.Close()
+		/*
+		 * Removed irc_disconnect in favour of directly handling connection closures
+		 * to prevent deadlocks.
+		 */
+		delete(Connections, name)
 	}
 }
 
@@ -98,9 +106,13 @@ func mentioned(nick string, query string) bool {
 }
 func irc_loop(settings ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
+	ConnectionsMutex.RLock()
 	cx := Connections[settings.Name].cx
+	ConnectionsMutex.RUnlock()
 
+	ConnectionsMutex.RLock()
 	send_irc_raw(Connections[settings.Name], "CAP REQ :sasl\r\n")
+	ConnectionsMutex.RUnlock()
 
 	auth_sent := false
 	breakout := false
@@ -122,11 +134,15 @@ func irc_loop(settings ServerConfig) {
 				fmt.Printf(">%v\n", response)
 
 				if !auth_sent && strings.HasSuffix(response, "ACK :sasl") {
+					ConnectionsMutex.RLock()
 					send_irc_raw(Connections[settings.Name], "AUTHENTICATE PLAIN\r\n")
+					ConnectionsMutex.RUnlock()
 				} else if !auth_sent && response == "AUTHENTICATE +" {
 					PLAIN := []byte(fmt.Sprintf("\x00%s\x00%s", settings.SaslUser, settings.SaslPassword))
 					auth_sent = true
+					ConnectionsMutex.RLock()
 					send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("AUTHENTICATE %s\r\n", base64.StdEncoding.EncodeToString(PLAIN)))
+					ConnectionsMutex.RUnlock()
 				} else if words_len >= 2 {
 					if strings.HasPrefix(words[1], "90") && !slices.Contains([]string{"900", "901", "902", "903"}, words[1]) {
 						auth_sent = false
@@ -134,20 +150,32 @@ func irc_loop(settings ServerConfig) {
 						breakout = true
 					} else if words[1] == "903" {
 						log.Printf("SASL authentication succesful")
+						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], "CAP END\r\n")
+						ConnectionsMutex.RUnlock()
 
+						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
+						ConnectionsMutex.RUnlock()
+						ConnectionsMutex.RLock()
 						send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("PRIVMSG NICKSERV :IDENTIFY %s %s\r\n", settings.Nick, settings.NickservPassword))
+						ConnectionsMutex.RUnlock()
+						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("USER %s 0 * :%s\r\n", settings.NickservUsername, settings.NickservUsername))
+						ConnectionsMutex.RUnlock()
 					} else if words[1] == "MODE" && words[0] == ":"+settings.Nick {
 
 						for _, channel := range settings.Channels {
+							ConnectionsMutex.RLock()
 							send_irc_raw(Connections[settings.Name], fmt.Sprintf("JOIN %s\r\n", channel.Name))
+							ConnectionsMutex.RUnlock()
 							Channel = channel.Name
 						}
 
 					} else if words[0] == "PING" {
+						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], strings.Replace(response, "PING", "PONG", 1)+"\r\n")
+						ConnectionsMutex.RUnlock()
 					} else if words[1] == "PRIVMSG" && words_len >= 3 {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
