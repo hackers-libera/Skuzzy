@@ -60,6 +60,12 @@ func send_irc_raw(conn Connection, msg string) {
 	}
 	fmt.Printf("< %v", msg)
 }
+func send_irc_raw_secret(conn Connection, msg string) {
+    _, err := conn.cx.Write([]byte(msg))
+    if err != nil {
+        log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
+    }
+}
 func irc_connect(settings ServerConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	conn, err := tls.Dial("tcp", settings.Host, tlsConfig)
@@ -120,7 +126,7 @@ func irc_loop(settings ServerConfig) {
 				} else if !auth_sent && response == "AUTHENTICATE +" {
 					PLAIN := []byte(fmt.Sprintf("\x00%s\x00%s", settings.SaslUser, settings.SaslPassword))
 					auth_sent = true
-					send_irc_raw(Connections[settings.Name], fmt.Sprintf("AUTHENTICATE %s\r\n", base64.StdEncoding.EncodeToString(PLAIN)))
+					send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("AUTHENTICATE %s\r\n", base64.StdEncoding.EncodeToString(PLAIN)))
 				} else if words_len >= 2 {
 					if strings.HasPrefix(words[1], "90") && !slices.Contains([]string{"900", "901", "902", "903"}, words[1]) {
 						auth_sent = false
@@ -131,7 +137,7 @@ func irc_loop(settings ServerConfig) {
 						send_irc_raw(Connections[settings.Name], "CAP END\r\n")
 
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
-						send_irc_raw(Connections[settings.Name], fmt.Sprintf("PRIVMSG NICKSERV :IDENTIFY %s %s\r\n", settings.Nick, settings.NickservPassword))
+						send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("PRIVMSG NICKSERV :IDENTIFY %s %s\r\n", settings.Nick, settings.NickservPassword))
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("USER %s 0 * :%s\r\n", settings.NickservUsername, settings.NickservUsername))
 					} else if words[1] == "MODE" && words[0] == ":"+settings.Nick {
 
@@ -148,11 +154,16 @@ func irc_loop(settings ServerConfig) {
 						user := strings.TrimLeft(words[0], ":")
 						user = strings.Split(user, "!")[0]
 						llm := ""
+                        var Backlog []string  
 						for _, channel := range settings.Channels {
 							if strings.EqualFold(channel.Name, words[2]) {
 								from_channel = channel.Name
 								log.Printf("[%s/%s] %s\n", settings.Host, from_channel, query)
 								llm = channel.LLM
+                                if len(channel.Backlog) > 10 {
+                                    channel.Backlog = channel.Backlog[1:len(channel.Backlog)]
+                                }
+                                Backlog = append(channel.Backlog,fmt.Sprintf("<%s> %s",user,query))
 								break
 							}
 						}
@@ -162,16 +173,19 @@ func irc_loop(settings ServerConfig) {
 							mention := mentioned(settings.Nick, query)
 
 							if strings.Contains(query, "@reset") {
-								query = strings.Replace(query, "@reset", "", -1)
+								query = strings.ReplaceAll(query, "@reset", "")
 								reset = true
 							}
 							if strings.Contains(query, "@reload") {
-								query = strings.Replace(query, "@reload", "", -1)
+								query = strings.ReplaceAll(query, "@reload", "")
 								reload = true
 							}
+                            fmt.Printf("%s\n",strings.Join(Backlog,"\n"))
 							prompt, text := FindPrompt(settings, llm, from_channel, query)
-							text = strings.Replace(text, "{USER}", user, -1)
-							text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+                            text = strings.Replace(text, "{NICK}", settings.Nick,-1)
+							text = strings.Replace(text, "{USER}", user,-1)
+							text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
+                            text = strings.Replace(text, "{BACKLOG}", strings.Join(Backlog,"\n"),-1)
 							if !mention && strings.HasSuffix(prompt, "/default") {
 								log.Printf("Skipping LLM query due to default prompt and no mention.")
 							} else {

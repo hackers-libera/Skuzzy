@@ -3,23 +3,43 @@ package main
 import (
 	"log"
 	"os"
+	"io"
 	"strings"
 	"time"
+	"path/filepath"
 )
 
+func setupLogging(settings ServerConfig){
+	logPath,err := filepath.Abs(settings.ServerLogFile)
+  if err != nil {
+		log.Fatalf("Failed to open server log file for %s, absolute path resolution failed: %v",settings.Name, err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		log.Fatalf("Failed to open server log file for %s: %v",settings.Name, err)
+	}
+	defer logFile.Close()
+
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+
+	log.SetOutput(multiWriter)
+}
 func server(configuration string) {
 	log.Printf("Loading %v\n", configuration)
 	settings, err  := LoadServerConfig(configuration)
 	if err != nil {
 		return
 	}
+	setupLogging(settings)
 	log.Printf("Loaded settings for %v:\n%v\n", settings.Name, settings)
 	for {
-		log.Printf("Connecting to %s\n", settings.Name)
+		log.Printf("Connecting to %s (%s)\n", settings.Name,settings.Host)
 		err := irc_connect(settings)
 		if err != nil {
 
-			log.Fatalf("%v\n", err)
+			log.Printf("Error connecting to %s (%s):%v\nReconnecting in 5 seconds...",settings.Name,settings.Host, err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		LoadSysPrompts(settings)
