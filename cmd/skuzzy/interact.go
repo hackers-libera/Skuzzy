@@ -59,7 +59,7 @@ func interact_triage(_input string) {
 			fmt.Printf("Unknown command:'%v'\n", input)
 			fallthrough
 		case "/help":
-			fmt.Println(help_string)
+			fmt.Print(help_string)
 		}
 	} else {
 		if Interactive && Server != "" {
