@@ -20,11 +20,12 @@ var SysPrompts = make(map[string]string)
 var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
-	channel   string
-	sysprompt string
-	request   string
-	reload    bool
-	reset     bool
+	channel   	string
+	sysprompt 	string
+	request   	string
+	reload    	bool
+	reset     	bool
+	PromptName	string
 }
 
 var DeepseekQueue = make(chan DeepseekRequest)
@@ -46,10 +47,22 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 			log.Printf("Reloading sys prompts\n")
 			LoadSysPrompts(settings)
 		}
+
+		/* Determine sysprompt to use based on PromptName. */
+		currentSysPrompt := req.sysprompt
+		if req.PromptName != "" {
+			/*
+		   * TODO: Here we can lookup a specific prompt if provided.
+			 * For now we can just use the default if specified isn't found.
+		   * Could add a map later for specific prompts.
+		   */
+		}
+
 		request := &deepseek.ChatCompletionRequest{
 			Model: model,
 			Messages: []deepseek.ChatCompletionMessage{
-				{Role: deepseek.ChatMessageRoleSystem, Content: req.sysprompt + "." + settings.SysPromptGlobalPrefix},
+				{Role: deepseek.ChatMessageRoleSystem, Content: currentSysPrompt +
+							 "." + settings.SysPromptGlobalPrefix},
 				{Role: deepseek.ChatMessageRoleUser, Content: req.request},
 			},
 		}

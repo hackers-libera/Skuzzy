@@ -7,9 +7,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Connection struct {
@@ -104,6 +107,10 @@ func mentioned(nick string, query string) bool {
 
 	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick)) 
 }
+
+/* Regex to parse reminder requests. */
+var rReminder = regexp.MustCompile(`(?i)remind me in (\d+)\s+(minute|minutes|hour|hours) to (.+)`)
+
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
 	ConnectionsMutex.RLock()
@@ -200,34 +207,88 @@ func irc_loop(settings *ServerConfig) {
 						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							reset := false
-							reload := false
-							mention := mentioned(settings.Nick, query)
 
-							if strings.Contains(query, "@reset") {
-								query = strings.ReplaceAll(query, "@reset", "")
-								reset = true
-							}
-							if strings.Contains(query, "@reload") {
-								query = strings.ReplaceAll(query, "@reload", "")
-								reload = true
-							}
-							prompt, text := FindPrompt(settings, llm, from_channel, query)
-							text = strings.Replace(text, "{NICK}", settings.Nick,-1)
-							text = strings.Replace(text, "{USER}", user,-1)
-							text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-							text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
-							if !mention && strings.HasSuffix(prompt, "/default") {
-								log.Printf("Skipping LLM query due to default prompt and no mention.")
-							} else {
+							var handledAsReminder bool
+							/* Check for reminder request. */
+							if matches:= rReminder.FindStringSubmatch(query); len(matches) == 4 {
+								duration, err := strconv.Atoi(matches[1])
+								if err != nil {
+									log.Printf("Error parsing reminder duration: %v", err)
+									send_irc(settings.Name, from_channel, user+": Sorry, I couldn't " +
+													"understand the duration for your reminder.")
+									/* Don't continue. LLM needs to provide a response. */
+								} else {
+									unit := matches[2]
+									reminderMessage := matches[3]
 
-								req := DeepseekRequest{from_channel, text, query, reload, reset}
-								DeepseekQueue <- req
-								log.Printf("Deepseek query:\n%v\n", req)
+									var dur time.Duration
+									switch strings.ToLower(unit) {
+									case "minute", "minutes":
+										dur = time.Duration(duration) * time.Minute
+									case "hour", "hours":
+										dur = time.Duration(duration) * time.Hour
+									default:
+										send_irc(settings.Name, from_channel, user+": Sorry, I only " +
+														"understand reminders in minutes or hours.")
+										/* Don't continue, want an LLM response. */
+									}
+
+									reminder := &Reminder {
+										Server:		settings.Name,
+										Channel:	from_channel,
+										User: 		user,
+										Message:	reminderMessage,
+										EndTime:	time.Now().Add(dur),
+									}
+									AddReminder(settings, reminder) /* Pass settings. */
+
+									/* Send DeepseekRequest for reminder confirmation. */
+									req := DeepseekRequest {
+										channel:		from_channel,
+										request:		fmt.Sprintf("You have scheduled a reminder for " +
+																						"%s in %s to %s.", user,
+																						matches[1]+""+matches[2], reminderMessage),
+										sysprompt: "You are a helpful assistant. " +
+															 "Confirm to the user that their reminder " +
+															 "has been scheduled in your unique style.",
+										PromptName: "reminder_confirm",
+									}
+									DeepseekQueue <- req
+									log.Printf("Deepseek reminder confirmation query:\n%v\n", req)
+									handledAsReminder = true
+								}
+							}
+							
+							if !handledAsReminder {
+								reload := false
+								mention := mentioned(settings.Nick, query)
+
+								if strings.Contains(query, "@reset") {
+									query = strings.ReplaceAll(query, "@reset", "")
+									reset = true
+								}
+								if strings.Contains(query, "@reload") {
+									query = strings.ReplaceAll(query, "@reload", "")
+									reload = true
+								}
+								prompt, text := FindPrompt(settings, llm, from_channel, query)
+								text = strings.Replace(text, "{NICK}", settings.Nick,-1)
+								text = strings.Replace(text, "{USER}", user,-1)
+								text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
+								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
+								if !mention && strings.HasSuffix(prompt, "/default") {
+									log.Printf("Skipping LLM query due to default prompt, mention, or " +
+														"reminder request.")
+								} else {
+
+									req := DeepseekRequest{from_channel, text, query, reload, reset, ""}
+									DeepseekQueue <- req
+									log.Printf("Deepseek query:\n%v\n", req)
+								}
 							}
 						}
 					}
 				}
-
 			}
 
 		}
@@ -235,7 +296,6 @@ func irc_loop(settings *ServerConfig) {
 			break
 		}
 	}
-
 }
 
 func FindPrompt(settings *ServerConfig, llm string, from_channel string, query string) (string, string) {
