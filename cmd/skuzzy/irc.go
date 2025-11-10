@@ -70,7 +70,7 @@ func send_irc_raw_secret(conn Connection, msg string) {
         log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
     }
 }
-func irc_connect(settings ServerConfig) error {
+func irc_connect(settings *ServerConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	conn, err := tls.Dial("tcp", settings.Host, tlsConfig)
 
@@ -104,7 +104,7 @@ func mentioned(nick string, query string) bool {
 
 	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick)) 
 }
-func irc_loop(settings ServerConfig) {
+func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
 	ConnectionsMutex.RLock()
 	cx := Connections[settings.Name].cx
@@ -182,20 +182,23 @@ func irc_loop(settings ServerConfig) {
 						user := strings.TrimLeft(words[0], ":")
 						user = strings.Split(user, "!")[0]
 						llm := ""
-                        var Backlog []string  
-						for _, channel := range settings.Channels {
-							if strings.EqualFold(channel.Name, words[2]) {
-								from_channel = channel.Name
-								log.Printf("[%s/%s] %s\n", settings.Host, from_channel, query)
-								llm = channel.LLM
-                                if len(channel.Backlog) > 10 {
-                                    channel.Backlog = channel.Backlog[1:len(channel.Backlog)]
-                                }
-                                Backlog = append(channel.Backlog,fmt.Sprintf("<%s> %s",user,query))
+						var channel *ChannelConfig
+
+						for i := range settings.Channels {
+							ch := &settings.Channels[i]
+							if strings.EqualFold(ch.Name, words[2]) {
+								channel = ch
+								from_channel = ch.Name
+								log.Printf("[%s/%s] %s\n", settings.Host, ch.Name, query)
+								llm = ch.LLM
+								if len(ch.Backlog) > 10 {
+									ch.Backlog = ch.Backlog[1:]
+								}
+								ch.Backlog = append(ch.Backlog, fmt.Sprintf("<%s> %s", user, query))
 								break
 							}
 						}
-						if strings.EqualFold(llm, "deepseek") {
+						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							reset := false
 							reload := false
 							mention := mentioned(settings.Nick, query)
@@ -208,12 +211,11 @@ func irc_loop(settings ServerConfig) {
 								query = strings.ReplaceAll(query, "@reload", "")
 								reload = true
 							}
-                            fmt.Printf("%s\n",strings.Join(Backlog,"\n"))
 							prompt, text := FindPrompt(settings, llm, from_channel, query)
-                            text = strings.Replace(text, "{NICK}", settings.Nick,-1)
+							text = strings.Replace(text, "{NICK}", settings.Nick,-1)
 							text = strings.Replace(text, "{USER}", user,-1)
 							text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-                            text = strings.Replace(text, "{BACKLOG}", strings.Join(Backlog,"\n"),-1)
+							text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
 							if !mention && strings.HasSuffix(prompt, "/default") {
 								log.Printf("Skipping LLM query due to default prompt and no mention.")
 							} else {
@@ -236,7 +238,7 @@ func irc_loop(settings ServerConfig) {
 
 }
 
-func FindPrompt(settings ServerConfig, llm string, from_channel string, query string) (string, string) {
+func FindPrompt(settings *ServerConfig, llm string, from_channel string, query string) (string, string) {
 
 	if strings.EqualFold(llm, "deepseek") {
 		return FindPromptDeepseek(settings, from_channel, query)

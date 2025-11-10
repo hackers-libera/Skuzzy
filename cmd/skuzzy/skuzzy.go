@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-func setupLogging(settings ServerConfig){
+func setupLogging(settings *ServerConfig) {
 	logPath,err := filepath.Abs(settings.ServerLogFile)
   if err != nil {
 		log.Fatalf("Failed to open server log file for %s, absolute path resolution failed: %v",settings.Name, err)

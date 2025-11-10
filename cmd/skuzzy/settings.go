@@ -11,7 +11,7 @@ type ChannelConfig struct {
 	Name              string   `yaml:"name"`
 	LLM               string   `yaml:"llm,omitempty"`
 	SysPromptsEnabled []string `yaml:"sys_prompts_enabled"`
-    Backlog []string
+	Backlog []string
 }
 
 type LLM struct {
@@ -33,23 +33,23 @@ type ServerConfig struct {
 	SysPrompts            map[string]string `yaml:"sys_prompts"`
 	SysPromptGlobalPrefix string            `yaml:"sys_prompt_global_suffix"`
 	DeepseekAPIKey        string            `yaml:"deepseek_api_key"`
-    ServerLogFile         string            `yaml:"server_log_file"`
+	ServerLogFile         string            `yaml:"server_log_file"`
 }
 
-func LoadServerConfig(path string) (ServerConfig,error) {
+func LoadServerConfig(path string) (*ServerConfig,error) {
 
 	var config ServerConfig
 
 	file_contents, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("Error loading settings from %v: %v", path, err)
-		return config, err
+		return &config, err
 	}
 	err = yaml.Unmarshal([]byte(file_contents), &config)
 	if err != nil {
 		log.Printf("Error loading settings from %v: %v", path, err)
-		return config, err
+		return &config, err
 	}
 
-	return config, nil
+	return &config, nil
 }

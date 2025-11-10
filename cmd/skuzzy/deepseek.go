@@ -29,7 +29,7 @@ type DeepseekRequest struct {
 
 var DeepseekQueue = make(chan DeepseekRequest)
 
-func Deepseek(settings ServerConfig, llm LLM) {
+func Deepseek(settings *ServerConfig, llm LLM) {
 	model := ""
 	switch llm.Model {
 
@@ -67,7 +67,7 @@ func Deepseek(settings ServerConfig, llm LLM) {
 	}
 }
 
-func FindPromptDeepseek(settings ServerConfig, from_channel string, query string) (string, string) {
+func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {
 	prefix := settings.Name + "/" + from_channel
 	SysPromptsMutex.RLock()
 	defer SysPromptsMutex.RUnlock()
@@ -85,7 +85,7 @@ func FindPromptDeepseek(settings ServerConfig, from_channel string, query string
 	return "", ""
 }
 
-func LoadSysPrompts(settings ServerConfig) {
+func LoadSysPrompts(settings *ServerConfig) {
 
 	SysPromptsMutex.Lock()
 	defer SysPromptsMutex.Unlock()
