@@ -68,6 +68,7 @@ func main() {
 	log.Printf("Started server go routines\n")
 
 	// Sleep forever, exit when instructed or ctrl+c
+	defer CloseConnections() /* Ensure connections are closed on exit. */
 	for {
 		time.Sleep(1 * time.Second)
 	}
