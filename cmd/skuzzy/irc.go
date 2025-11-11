@@ -185,6 +185,13 @@ func irc_loop(settings *ServerConfig) {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
 						user := strings.TrimLeft(words[0], ":")
+
+						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
+						r, _ := regexp.Compile(`^<.*?> `)
+						if r.MatchString(query) {
+							query = r.ReplaceAllString(query, "")
+						}
+
 						user = strings.Split(user, "!")[0]
 						llm := ""
 						var channel *ChannelConfig
