@@ -52,17 +52,7 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		currentSysPrompt := req.sysprompt
 		if req.PromptName == "reminder_parse" {
 			/* Specific prompt for parsing reminders. */
-			currentSysPrompt = "You are a reminder parsing assistant. Your only job " +
-				"is to  analyse the following text and extract the " +
-				"duration and the reminder message. " +
-				"Respond ONLY with a JSON object with two fields: " +
-				"\"is_reminder\" (boolean), \"duration_minutes\" (integer) " +
-				"and \"reminder_message\" (string). Convert all " +
-				"durations (e.g., hours) to minutes. If you cannot " +
-				"determine the duration or message, set \"is_reminder\" " +
-				"to false. Example: " +
-				"{\"is_reminder\": true, \"duration_minutes\": 120, " +
-				"\"reminder_message\": \"Get food!\"}"
+			currentSysPrompt = settings.SysPrompts["reminder_parse"]
 		}
 
 		request := &deepseek.ChatCompletionRequest{

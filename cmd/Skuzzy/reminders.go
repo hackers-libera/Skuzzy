@@ -40,13 +40,10 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 		 * When the timer fires, create a request for the LLM to generate
 		 * the reminder message.
 		 */
-		reminderPrompt := fmt.Sprintf("It's time to remind the user %s to %s. "+
-			"Create a reminder message in your unique "+
-			"style. Be sure to ping the user.",
-			reminder.User, reminder.Message)
+		reminderPrompt := fmt.Sprintf(settings.SysPrompts["reminder_fire"],
+											reminder.User, reminder.Message)
 
-		/* Send the default prompt. */
-		_, sysPrompt := FindPrompt(settings, "deepseek", reminder.Channel, "reminder")
+		/* Send the reminder_fire prompt. */
 
 		req := DeepseekRequest{
 			channel:   reminder.Channel,

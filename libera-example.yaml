@@ -33,3 +33,17 @@ channels:
 sys_prompts:
   greet: Greet users in an IRC channel, be original. The user is {USER} the channel is  {CHANNEL}
   default: https://raw.githubusercontent.com/hackers-libera/Skuzzy/refs/heads/main/default.txt
+  reminder_parse: >-
+    You are a reminder parsing assistant. Your only job is to analyse the
+    following text and extract the duration and the reminder message.
+    Respond ONLY with a JSON object with two fields: "is_reminder" (boolean),
+    "duration_minutes" (integer) and "reminder_message" (string). Convert all
+    durations (e.g., hours) to minutes. If you cannot determine the duration
+    or message, set "is_reminder" to false. Example:
+    {"is_reminder": true, "duration_minutes": 120, "reminder_message": "Get food!"}
+  reminder_confirm: >-
+    You are a helpful assistant. Confirm to the user that their reminder has been
+    scheduled in your unique style.
+  reminder_fire: >-
+    It's time to remind the {USER} to {MESSAGE}. Create a reminder message
+    in your unique style. Be sure to ping the user.

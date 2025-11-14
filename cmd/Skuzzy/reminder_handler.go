@@ -48,9 +48,7 @@ func ReminderHandler(settings *ServerConfig) {
 				channel: parsedData.OriginalReq.channel,
 				request: fmt.Sprintf("You have scheduled a reminder for %s in %d minutes to %s.",
 					reminder.User, result.DurationMinutes, reminder.Message),
-				sysprompt: "You are a helpful assistant. Confirm to the " +
-					"user that their reminder has been scheduled in " +
-					"your unique style.",
+				sysprompt: settings.SysPrompts["reminder_confirm"],
 				PromptName: "reminder_confirm",
 				User:       parsedData.OriginalReq.User,
 			}

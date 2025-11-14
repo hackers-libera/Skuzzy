@@ -1,0 +1,103 @@
+From ee8d4b497cbbcf20f27ee582450d557fb5162e6c Mon Sep 17 00:00:00 2001
+From: Ritchie Cunningham <ritchie@ritchiecunningham.co.uk>
+Date: Sat, 15 Nov 2025 00:53:25 +0000
+Subject: [PATCH 6/8] [Add] Delete user reminders.
+
+---
+ cmd/skuzzy/irc.go       | 19 ++++++++++++++++---
+ cmd/skuzzy/reminders.go | 37 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 53 insertions(+), 3 deletions(-)
+
+diff --git a/cmd/Skuzzy/irc.go b/cmd/Skuzzy/irc.go
+index c3266c3..9d8d809 100644
+--- a/cmd/Skuzzy/irc.go
++++ b/cmd/Skuzzy/irc.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"io"
+ 	"log"
++	"strconv"
+ 	"net"
+ 	"regexp"
+ 	"slices"
+@@ -108,8 +109,9 @@ func mentioned(nick string, query string) bool {
+ }
+ 
+ /* Regex to parse reminder requests. */
+-var rReminder = regexp.MustCompile(`(?i)remind|reminder`)          /* Set reminder. */
+-var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`) /* List reminders. */
++var rReminder = regexp.MustCompile(`(?i)remind|reminder`)                      /* Set reminder. */
++var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)             /* List reminders. */
++var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`) /* Delete reminder. */
+ 
+ func irc_loop(settings *ServerConfig) {
+ 	log.Printf("IRC message loop for %s\n", settings.Name)
+@@ -235,8 +237,19 @@ func irc_loop(settings *ServerConfig) {
+ 									/* List reminders. */
+ 									send_irc(settings.Name, from_channel, ListReminders(settings, user))
+ 									log.Printf("Deepseek reminder listing query:\n%v\n", cleanQuery)
++								} else if rDeleteReminder.MatchString(cleanQuery) {
++									/* Delete a reminder. */
++									matches := rDeleteReminder.FindStringSubmatch(cleanQuery)
++									if len(matches) > 2 {
++										id, err := strconv.Atoi(matches[2])
++										if err == nil {
++											send_irc(settings.Name, from_channel, DeleteReminder(settings,
++												user, id))
++											log.Printf("%s requested to delete reminder ID %d", user, id)
++										}
++									}
+ 								} else if rReminder.MatchString(cleanQuery) {
+-									req := DeepseekRequest {
++									req := DeepseekRequest{
+ 										channel:       from_channel,
+ 										request:       cleanQuery,
+ 										PromptName:    "reminder_parse",
+diff --git a/cmd/Skuzzy/reminders.go b/cmd/Skuzzy/reminders.go
+index 42ac4d4..cc7edb6 100644
+--- a/cmd/Skuzzy/reminders.go
++++ b/cmd/Skuzzy/reminders.go
+@@ -138,3 +138,40 @@ func formatDuration(d time.Duration) string {
+ 		return fmt.Sprintf("%d days %d hours", int(d.Hours()/24), int(d.Hours())%24)
+ 	}
+ }
++
++/* Remove a reminder by ID for given user. */
++func DeleteReminder(settings *ServerConfig, user string, id int) string {
++	ReminderMutex.Lock()
++	defer ReminderMutex.Unlock()
++
++	var response string
++	found := false
++
++	for key, reminderList := range Reminders {
++		for i, r := range reminderList {
++			if r.User == user && r.ID == id {
++				/* Stop the timer to prevent it from firing. */
++				r.Timer.Stop()
++
++				/* Remove the reminder from the slice. */
++				Reminders[key] = append(reminderList[:i], reminderList[i+1:]...)
++				log.Printf("%s deleted reminder ID %d: %s", user, id, r.Message)
++				response = fmt.Sprintf("%s: Reminder ID %d (\"%s\") has been deleted.", user,
++					id, r.Message)
++				found = true
++				break
++			}
++		}
++		if found {
++			if len(Reminders[key]) == 0 { /* List empty, remove key from map. */
++				delete(Reminders, key)
++			}
++			break
++		}
++	}
++
++	if !found {
++		response = fmt.Sprintf("%s: No reminder found with ID %d for you.", user, id)
++	}
++	return response
++}
+-- 
+2.48.1
+
