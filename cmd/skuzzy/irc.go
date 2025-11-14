@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"sync"
 )
 
@@ -122,6 +123,8 @@ func irc_loop(settings *ServerConfig) {
 	auth_sent := false
 	breakout := false
 
+	cx.SetReadDeadline(time.Now().Add(240*time.Second))
+
 	for {
 		buf := make([]byte, 65535)
 		nbytes, err := cx.Read(buf)
@@ -130,7 +133,16 @@ func irc_loop(settings *ServerConfig) {
 			if err == io.EOF {
 				break
 			}
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.Printf("[%s] Read timeout, sending PING to server.", settings.Name)
+				ConnectionsMutex.RLock()
+				send_irc_raw(Connections[settings.Name], fmt.Sprintf("PING %s\r\n", settings.Host))
+				ConnectionsMutex.RUnlock()
+				cx.SetReadDeadline(time.Now().Add(240*time.Second))
+				continue
+			}
 		} else if nbytes > 0 {
+			cx.SetReadDeadline(time.Now().Add(240*time.Second))
 			for _, line := range strings.Split(string(buf), "\n") {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
