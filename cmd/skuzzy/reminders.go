@@ -9,19 +9,19 @@ import (
 
 /* Holds information for a single reminder. */
 type Reminder struct {
-	Server		string
-	Channel		string
-	User			string
-	Message		string
-	EndTime		time.Time
-	Timer			*time.Timer
+	Server  string
+	Channel string
+	User    string
+	Message string
+	EndTime time.Time
+	Timer   *time.Timer
 }
 
 var (
 	/* Holds all active reminders, keyed by a server/channel string. */
-	Reminders			= make(map[string][]*Reminder)
+	Reminders = make(map[string][]*Reminder)
 	/* Protect against concurrent access. */
-	ReminderMutex	= sync.RWMutex{}
+	ReminderMutex = sync.RWMutex{}
 )
 
 /* Schdules a new reminder. */
@@ -29,25 +29,42 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 	ReminderMutex.Lock()
 	defer ReminderMutex.Unlock()
 
+	/* Try eat up all our RAM with your silly reminders now!!11! */
+	userReminderCount := 0
 	key := fmt.Sprintf("%s/%s", reminder.Server, reminder.Channel)
+	if existingReminders, ok := Reminders[key]; ok {
+		for _, r := range existingReminders {
+			if r.User == reminder.User {
+				userReminderCount++
+			}
+		}
+	}
+	if userReminderCount >= settings.MaxRemindersPerUser {
+		send_irc(reminder.Server, reminder.Channel, fmt.Sprintf("%s: You have reached "+
+			"your limit of %d active reminders "+
+			"in this channel",
+			reminder.User, settings.MaxRemindersPerUser))
+		return
+	}
+
 	Reminders[key] = append(Reminders[key], reminder)
 	log.Printf("Scheduled reminder for %s in channel %s: %s", reminder.User,
-						reminder.Channel, reminder.Message)
+		reminder.Channel, reminder.Message)
 
 	/* Schedule the reminder. */
 	reminder.Timer = time.AfterFunc(time.Until(reminder.EndTime), func() {
 		/*
-	   * When the timer fires, create a request for the LLM to generate
-	   * the reminder message.
-	   */
+		 * When the timer fires, create a request for the LLM to generate
+		 * the reminder message.
+		 */
 		reminderPrompt := fmt.Sprintf(settings.SysPrompts["reminder_fire"],
-											reminder.User, reminder.Message)
+			reminder.User, reminder.Message)
 
 		/* Send the reminder_fire prompt. */
-		req := DeepseekRequest {
-			channel:		reminder.Channel,
-			request:		reminderPrompt,
-			sysprompt:	settings.SysPrompts["reminder_fire"],
+		req := DeepseekRequest{
+			channel:   reminder.Channel,
+			request:   reminderPrompt,
+			sysprompt: settings.SysPrompts["reminder_fire"],
 		}
 		DeepseekQueue <- req
 
