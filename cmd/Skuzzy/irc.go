@@ -248,47 +248,58 @@ func irc_loop(settings *ServerConfig) {
 							}
 						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
-							reset := false
+							mention := mentioned(settings.Nick, query)
+							if mention {
+								/* Skuzzy mentioned, process the command. */
+								nickPattern := `(?i)^` + regexp.QuoteMeta(settings.Nick) + `[:, ]*`
+								r, _ := regexp.Compile(nickPattern)
+								cleanQuery := r.ReplaceAllString(query, "")
 
-							var handledAsReminder bool
-							/* Check for reminder keyword. */
-							if rReminder.MatchString(query) {
-								req := DeepseekRequest{
-									channel:       from_channel,
-									request:       query,
-									PromptName:    "reminder_parse",
-									OriginalQuery: query,
-									User:          user,
-								}
-								DeepseekQueue <- req
-								log.Printf("Deepseek reminder parsing query:\n%v\n", req)
-								handledAsReminder = true
-							}
-
-							if !handledAsReminder {
-								reload := false
-								mention := mentioned(settings.Nick, query)
-
-								if strings.Contains(query, "@reset") {
-									query = strings.ReplaceAll(query, "@reset", "")
-									reset = true
-								}
-								if strings.Contains(query, "@reload") {
-									query = strings.ReplaceAll(query, "@reload", "")
-									reload = true
-								}
-								prompt, text := FindPrompt(settings, llm, from_channel, query)
-								text = strings.Replace(text, "{NICK}", settings.Nick, -1)
-								text = strings.Replace(text, "{USER}", user, -1)
-								text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
-								text = strings.Replace(text, "{VERSION}", "a665f24", -1)
-								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
-								if !mention && strings.HasSuffix(prompt, "/default") {
-									log.Printf("Skipping LLM query due to default prompt, mention, or " +
-										"reminder request.")
+								/* Check for reminder keyword. */
+								if rReminder.MatchString(cleanQuery) {
+									req := DeepseekRequest{
+										channel:       from_channel,
+										request:       cleanQuery,
+										PromptName:    "reminder_parse",
+										OriginalQuery: cleanQuery,
+										User:          user,
+									}
+									DeepseekQueue <- req
+									log.Printf("Deepseek reminder parsing query:\n%v\n", req)
 								} else {
+									/* Handle other commands like @reset, @reload, or default chat. */
+									reload := false
+									reset := false
+									if strings.Contains(cleanQuery, "@reset") {
+										cleanQuery = strings.ReplaceAll(cleanQuery, "@reset", "")
+										reset = true
+									}
+									if strings.Contains(cleanQuery, "@reload") {
+										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
+										reload = true
+									}
+									_, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-									req := DeepseekRequest{from_channel, text, query, reload, reset, "", query, user}
+									req := DeepseekRequest{from_channel, text, cleanQuery, reload, reset, "", cleanQuery, user}
+									DeepseekQueue <- req
+									log.Printf("Deepseek query:\n%v\n", req)
+								}
+							} else {
+								prompt, _ := FindPrompt(settings, llm, from_channel, query)
+								if strings.HasSuffix(prompt, "/default") {
+									log.Printf("Skipping LLM query due to default prompt and no mention.")
+								} else {
+									_, text := FindPrompt(settings, llm, from_channel, query)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+
+									req := DeepseekRequest{from_channel, text, query, false, false, "", query, user}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}
