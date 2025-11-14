@@ -29,7 +29,24 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 	ReminderMutex.Lock()
 	defer ReminderMutex.Unlock()
 
+	/* Try eat up all our RAM with your silly reminders now!!11! */
+	userReminderCount := 0
 	key := fmt.Sprintf("%s/%s", reminder.Server, reminder.Channel)
+	if existingReminders, ok := Reminders[key]; ok {
+		for _, r := range existingReminders {
+			if r.User == reminder.User {
+				userReminderCount++
+			}
+		}
+	}
+	if userReminderCount >= settings.MaxRemindersPerUser {
+		send_irc(reminder.Server, reminder.Channel, fmt.Sprintf("%s: You have reached "+
+			"your limit of %d active reminders "+
+			"in this channel",
+			reminder.User, settings.MaxRemindersPerUser))
+		return
+	}
+
 	Reminders[key] = append(Reminders[key], reminder)
 	log.Printf("Scheduled reminder for %s in channel %s: %s", reminder.User,
 		reminder.Channel, reminder.Message)
