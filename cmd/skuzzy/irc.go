@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
 type Connection struct {
@@ -67,10 +67,10 @@ func send_irc_raw(conn Connection, msg string) {
 	fmt.Printf("< %v", msg)
 }
 func send_irc_raw_secret(conn Connection, msg string) {
-    _, err := conn.cx.Write([]byte(msg))
-    if err != nil {
-        log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
-    }
+	_, err := conn.cx.Write([]byte(msg))
+	if err != nil {
+		log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
+	}
 }
 func irc_connect(settings *ServerConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
@@ -104,11 +104,12 @@ func CloseConnections() {
 
 func mentioned(nick string, query string) bool {
 
-	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick)) 
+	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick))
 }
 
 /* Regex to parse reminder requests. */
-var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
+var rReminder = regexp.MustCompile(`(?i)remind|reminder`)          /* Set reminder. */
+var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`) /* List reminders. */
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -123,7 +124,7 @@ func irc_loop(settings *ServerConfig) {
 	auth_sent := false
 	breakout := false
 
-	cx.SetReadDeadline(time.Now().Add(240*time.Second))
+	cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 
 	for {
 		buf := make([]byte, 65535)
@@ -138,11 +139,11 @@ func irc_loop(settings *ServerConfig) {
 				ConnectionsMutex.RLock()
 				send_irc_raw(Connections[settings.Name], fmt.Sprintf("PING %s\r\n", settings.Host))
 				ConnectionsMutex.RUnlock()
-				cx.SetReadDeadline(time.Now().Add(240*time.Second))
+				cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 				continue
 			}
 		} else if nbytes > 0 {
-			cx.SetReadDeadline(time.Now().Add(240*time.Second))
+			cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 			for _, line := range strings.Split(string(buf), "\n") {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
@@ -230,14 +231,17 @@ func irc_loop(settings *ServerConfig) {
 								r, _ := regexp.Compile(nickPattern)
 								cleanQuery := r.ReplaceAllString(query, "")
 
-								/* Check for reminder keyword. */
-								if rReminder.MatchString(cleanQuery) {
+								if rListReminders.MatchString(cleanQuery) {
+									/* List reminders. */
+									send_irc(settings.Name, from_channel, ListReminders(settings, user))
+									log.Printf("Deepseek reminder listing query:\n%v\n", cleanQuery)
+								} else if rReminder.MatchString(cleanQuery) {
 									req := DeepseekRequest {
-										channel:				from_channel,
-										request:				cleanQuery,
-										PromptName:			"reminder_parse",
-										OriginalQuery:	cleanQuery,
-										User:						user,
+										channel:       from_channel,
+										request:       cleanQuery,
+										PromptName:    "reminder_parse",
+										OriginalQuery: cleanQuery,
+										User:          user,
 									}
 									DeepseekQueue <- req
 									log.Printf("Deepseek reminder parsing query:\n%v\n", req)
@@ -254,10 +258,10 @@ func irc_loop(settings *ServerConfig) {
 										reload = true
 									}
 									_, text := FindPrompt(settings, llm, from_channel, cleanQuery)
-									text = strings.Replace(text, "{NICK}", settings.Nick,-1)
-									text = strings.Replace(text, "{USER}", user,-1)
-									text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
 									req := DeepseekRequest{from_channel, text, cleanQuery, reload, reset, "", cleanQuery, user}
 									DeepseekQueue <- req
@@ -269,10 +273,10 @@ func irc_loop(settings *ServerConfig) {
 									log.Printf("Skipping LLM query due to default prompt and no mention.")
 								} else {
 									_, text := FindPrompt(settings, llm, from_channel, query)
-									text = strings.Replace(text, "{NICK}", settings.Nick,-1)
-									text = strings.Replace(text, "{USER}", user,-1)
-									text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
 									req := DeepseekRequest{from_channel, text, query, false, false, "", query, user}
 									DeepseekQueue <- req
