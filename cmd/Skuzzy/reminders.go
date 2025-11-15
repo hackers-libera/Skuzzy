@@ -176,3 +176,61 @@ func DeleteReminder(settings *ServerConfig, user string, id int) string {
 	}
 	return response
 }
+
+/* Modify an existing reminder by ID for given user. */
+func ChangeReminder(settings *ServerConfig, user string, id int, newMessage string,
+	newDurationMinutes int) string {
+
+	ReminderMutex.Lock()
+	defer ReminderMutex.Unlock()
+
+	var response string
+	found := false
+
+	for _, reminderList := range Reminders {
+		for _, r := range reminderList {
+			if r.User == user && r.ID == id {
+				/* Update message if provided. */
+				if newMessage != "" {
+					r.Message = newMessage
+				}
+
+				/* Reschedule if new duration is provided. */
+				if newDurationMinutes > 0 {
+					/* Stop old timer. */
+					r.Timer.Stop()
+					/* Calculate new EndTime. */
+					r.EndTime = time.Now().Add(time.Duration(newDurationMinutes) * time.Minute)
+					/* Start new timer. */
+					r.Timer = time.AfterFunc(time.Until(r.EndTime), func() {
+						reminderPrompt := fmt.Sprintf(settings.SysPrompts["reminder_fire"],
+							r.User, r.Message)
+						req := DeepseekRequest{
+							channel:   r.Channel,
+							request:   reminderPrompt,
+							sysprompt: settings.SysPrompts["reminder_fire"],
+						}
+						DeepseekQueue <- req
+						RemoveReminder(r)
+					})
+				}
+
+				log.Printf("%s changed reminder ID %d. New message \"%s\", New Duration: %d minutes",
+					user, id, r.Message, newDurationMinutes)
+
+				response = fmt.Sprintf("%s: Reminder ID %d has been updated. New message: "+
+					"\"%s\", due in %s.", user, id, r.Message, formatDuration(time.Until(r.EndTime)))
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		response = fmt.Sprintf("%s: No reminder found with ID %d for you.", user, id)
+	}
+	return response
+}

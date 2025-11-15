@@ -116,6 +116,7 @@ func mentioned(nick string, query string) bool {
 var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
 var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
 var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`)
+var rChangeReminder = regexp.MustCompile(`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
 
 func Ping(settings *ServerConfig) {
     timeout := int64(499)
@@ -270,6 +271,26 @@ func irc_loop(settings *ServerConfig) {
 											send_irc(settings.Name, from_channel, DeleteReminder(settings,
 												user, id))
 											log.Printf("%s requested to delete reminder ID %d", user, id)
+										}
+									}
+								} else if rChangeReminder.MatchString(cleanQuery) {
+									/* Change reminder. */
+									matches := rChangeReminder.FindStringSubmatch(cleanQuery)
+									if len(matches) > 3 {
+										id, err := strconv.Atoi(matches[2])
+										newDetails := matches[3]
+										if err == nil {
+											req := DeepseekRequest{
+												channel:       from_channel,
+												Server:        settings.Name,
+												request:       fmt.Sprintf("Reminder ID: %d, Details: %s", id, newDetails),
+												PromptName:    "reminder_change_parse",
+												OriginalQuery: cleanQuery,
+												User:          user,
+											}
+											DeepseekQueue <- req
+											log.Printf("%s requested to change reminder ID %d with details: %s",
+												user, id, newDetails)
 										}
 									}
 								} else if rReminder.MatchString(cleanQuery) {
