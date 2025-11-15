@@ -139,3 +139,40 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%d days %d hours", int(d.Hours()/24), int(d.Hours())%24)
 	}
 }
+
+/* Remove a reminder by ID for given user. */
+func DeleteReminder(settings *ServerConfig, user string, id int) string {
+	ReminderMutex.Lock()
+	defer ReminderMutex.Unlock()
+
+	var response string
+	found := false
+
+	for key, reminderList := range Reminders {
+		for i, r := range reminderList {
+			if r.User == user && r.ID == id {
+				/* Stop the timer to prevent it from firing. */
+				r.Timer.Stop()
+
+				/* Remove the reminder from the slice. */
+				Reminders[key] = append(reminderList[:i], reminderList[i+1:]...)
+				log.Printf("%s deleted reminder ID %d: %s", user, id, r.Message)
+				response = fmt.Sprintf("%s: Reminder ID %d (\"%s\") has been deleted.", user,
+					id, r.Message)
+				found = true
+				break
+			}
+		}
+		if found {
+			if len(Reminders[key]) == 0 { /* List empty, remove key from map. */
+				delete(Reminders, key)
+			}
+			break
+		}
+	}
+
+	if !found {
+		response = fmt.Sprintf("%s: No reminder found with ID %d for you.", user, id)
+	}
+	return response
+}
