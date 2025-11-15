@@ -60,11 +60,24 @@ func ReminderHandler(settings *ServerConfig) {
 	}
 }
 
-func requeueAsChat(originalReq DeepseekRequest) {
-	/*
-	 * Re-queue the original message for for regular chat processing.
-	 * We'll jsut log that it wasn't a reminder for now as re-queueing
-	 * requires finding the original default prompt which adds some complexity.
-	 */
-	log.Printf("LLM determined this was not a reminder: %s", originalReq.OriginalQuery)
+func requeueAsChat(settings *ServerConfig, originalReq DeepseekRequest) {
+	log.Printf("LLM determined this was not a reminder, reqeueing as chat: %s",
+		originalReq.OriginalQuery)
+
+	_, text := FindPrompt(settings, "deepseek", originalReq.channel, originalReq.OriginalQuery)
+
+	/* Can't get backlog available here. Do we care? */
+	text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+	text = strings.Replace(text, "{USER}", originalReq.User, -1)
+	text = strings.Replace(text, "{CHANNEL}", originalReq.channel, -1)
+
+	/* Create and send the new request for general processing. */
+	req := DeepseekRequest{
+		Server:    originalReq.Server,
+		channel:   originalReq.channel,
+		sysprompt: text,
+		request:   originalReq.OriginalQuery,
+		User:      originalReq.User,
+	}
+	DeepseekQueue <- req
 }
