@@ -102,6 +102,7 @@ func requeueAsChat(settings *ServerConfig, originalReq DeepseekRequest) {
 
 	/* Create and send the new request for general processing. */
 	req := DeepseekRequest{
+		Server:    originalReq.Server,
 		channel:   originalReq.channel,
 		sysprompt: text,
 		request:   originalReq.OriginalQuery,
