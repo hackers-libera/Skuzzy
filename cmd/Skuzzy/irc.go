@@ -114,6 +114,7 @@ func mentioned(nick string, query string) bool {
 
 /* Regex to parse reminder requests. */
 var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
+var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
 
 func Ping(settings *ServerConfig) {
     timeout := int64(499)
@@ -255,8 +256,11 @@ func irc_loop(settings *ServerConfig) {
 								r, _ := regexp.Compile(nickPattern)
 								cleanQuery := r.ReplaceAllString(query, "")
 
-								/* Check for reminder keyword. */
-								if rReminder.MatchString(cleanQuery) {
+								if rListReminders.MatchString(cleanQuery) {
+									/* List reminders. */
+									send_irc(settings.Name, from_channel, ListReminders(settings, user))
+									log.Printf("Deepseek reminder listing query:\n%v\n", cleanQuery)
+								} else if rReminder.MatchString(cleanQuery) {
 									req := DeepseekRequest{
 										channel:       from_channel,
 										request:       cleanQuery,

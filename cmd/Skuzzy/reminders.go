@@ -9,6 +9,7 @@ import (
 
 /* Holds information for a single reminder. */
 type Reminder struct {
+	ID      int
 	Server  string
 	Channel string
 	User    string
@@ -21,7 +22,8 @@ var (
 	/* Holds all active reminders, keyed by a server/channel string. */
 	Reminders = make(map[string][]*Reminder)
 	/* Protect against concurrent access. */
-	ReminderMutex = sync.RWMutex{}
+	ReminderMutex  = sync.RWMutex{}
+	nextReminderID = 1
 )
 
 /* Schdules a new reminder. */
@@ -47,6 +49,8 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 		return
 	}
 
+	reminder.ID = nextReminderID
+	nextReminderID++
 	Reminders[key] = append(Reminders[key], reminder)
 	log.Printf("Scheduled reminder for %s in channel %s: %s", reminder.User,
 		reminder.Channel, reminder.Message)
@@ -91,5 +95,47 @@ func RemoveReminder(reminder *Reminder) {
 				break
 			}
 		}
+	}
+}
+
+/* Retrieve and format a user's active reminders. */
+func ListReminders(settings *ServerConfig, user string) string {
+	ReminderMutex.RLock()
+	defer ReminderMutex.RUnlock()
+
+	var userReminders []*Reminder
+	for _, reminderList := range Reminders {
+		for _, r := range reminderList {
+			if r.User == user {
+				userReminders = append(userReminders, r)
+			}
+		}
+	}
+
+	if len(userReminders) == 0 {
+		return fmt.Sprintf("%s: You have no active reminders.", user)
+	}
+
+	var response strings.Builder
+	response.WriteString(fmt.Sprintf("%s: Your active reminders:", user))
+	for i, r := range userReminders {
+		timeRemaining := time.Until(r.EndTime)
+		response.WriteString(fmt.Sprintf(" %d. ID: %d - \"%s\" (in %s) ",
+			i+1, r.ID, r.Message, formatDuration(timeRemaining)))
+	}
+	return response.String()
+}
+
+/* Format duration. */
+func formatDuration(d time.Duration) string {
+	/* Currently, we only do whole minutes, but just in case that changes. */
+	if d < time.Minute {
+		return fmt.Sprintf("%d seconds", int(d.Seconds()))
+	} else if d < time.Hour {
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	} else if d < 24*time.Hour {
+		return fmt.Sprintf("%d hours %d minutes", int(d.Hours()), int(d.Minutes())%60)
+	} else {
+		return fmt.Sprintf("%d days %d hours", int(d.Hours()/24), int(d.Hours())%24)
 	}
 }
