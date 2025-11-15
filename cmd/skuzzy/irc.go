@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"net"
 	"regexp"
 	"slices"
@@ -108,8 +109,9 @@ func mentioned(nick string, query string) bool {
 }
 
 /* Regex to parse reminder requests. */
-var rReminder = regexp.MustCompile(`(?i)remind|reminder`)          /* Set reminder. */
-var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`) /* List reminders. */
+var rReminder = regexp.MustCompile(`(?i)remind|reminder`)                      /* Set reminder. */
+var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)             /* List reminders. */
+var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`) /* Delete reminder. */
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -235,8 +237,19 @@ func irc_loop(settings *ServerConfig) {
 									/* List reminders. */
 									send_irc(settings.Name, from_channel, ListReminders(settings, user))
 									log.Printf("Deepseek reminder listing query:\n%v\n", cleanQuery)
+								} else if rDeleteReminder.MatchString(cleanQuery) {
+									/* Delete a reminder. */
+									matches := rDeleteReminder.FindStringSubmatch(cleanQuery)
+									if len(matches) > 2 {
+										id, err := strconv.Atoi(matches[2])
+										if err == nil {
+											send_irc(settings.Name, from_channel, DeleteReminder(settings,
+												user, id))
+											log.Printf("%s requested to delete reminder ID %d", user, id)
+										}
+									}
 								} else if rReminder.MatchString(cleanQuery) {
-									req := DeepseekRequest {
+									req := DeepseekRequest{
 										channel:       from_channel,
 										request:       cleanQuery,
 										PromptName:    "reminder_parse",
