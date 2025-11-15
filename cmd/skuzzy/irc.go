@@ -9,9 +9,10 @@ import (
 	"net"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
 type Connection struct {
@@ -67,10 +68,10 @@ func send_irc_raw(conn Connection, msg string) {
 	fmt.Printf("< %v", msg)
 }
 func send_irc_raw_secret(conn Connection, msg string) {
-    _, err := conn.cx.Write([]byte(msg))
-    if err != nil {
-        log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
-    }
+	_, err := conn.cx.Write([]byte(msg))
+	if err != nil {
+		log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
+	}
 }
 func irc_connect(settings *ServerConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
@@ -104,11 +105,16 @@ func CloseConnections() {
 
 func mentioned(nick string, query string) bool {
 
-	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick)) 
+	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick))
 }
 
 /* Regex to parse reminder requests. */
 var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
+var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
+var rDeleteReminder = regexp.MustCompile(
+	`(?i)(delete|remove) reminder (?:id )?(\d+)`)
+var rChangeReminder = regexp.MustCompile(
+	`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -123,7 +129,7 @@ func irc_loop(settings *ServerConfig) {
 	auth_sent := false
 	breakout := false
 
-	cx.SetReadDeadline(time.Now().Add(240*time.Second))
+	cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 
 	for {
 		buf := make([]byte, 65535)
@@ -138,11 +144,11 @@ func irc_loop(settings *ServerConfig) {
 				ConnectionsMutex.RLock()
 				send_irc_raw(Connections[settings.Name], fmt.Sprintf("PING %s\r\n", settings.Host))
 				ConnectionsMutex.RUnlock()
-				cx.SetReadDeadline(time.Now().Add(240*time.Second))
+				cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 				continue
 			}
 		} else if nbytes > 0 {
-			cx.SetReadDeadline(time.Now().Add(240*time.Second))
+			cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 			for _, line := range strings.Split(string(buf), "\n") {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
@@ -223,46 +229,95 @@ func irc_loop(settings *ServerConfig) {
 							}
 						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
-							reset := false
+							mention := mentioned(settings.Nick, query)
+							if mention {
+								/* Skuzzy mentioned, process the command. */
+								nickPattern := `(?i)^` + regexp.QuoteMeta(settings.Nick) + `[:, ]*`
+								r, _ := regexp.Compile(nickPattern)
+								cleanQuery := r.ReplaceAllString(query, "")
 
-							var handledAsReminder bool
-							/* Check for reminder keyword. */
-							if rReminder.MatchString(query) {
-								req := DeepseekRequest {
-									channel:				from_channel,
-									request:				query,
-									PromptName:			"reminder_parse",
-									OriginalQuery:	query,
-									User:						user,
-								}
-								DeepseekQueue <- req
-								log.Printf("Deepseek reminder parsing query:\n%v\n", req)
-								handledAsReminder = true
-							}
-							
-							if !handledAsReminder {
-								reload := false
-								mention := mentioned(settings.Nick, query)
-
-								if strings.Contains(query, "@reset") {
-									query = strings.ReplaceAll(query, "@reset", "")
-									reset = true
-								}
-								if strings.Contains(query, "@reload") {
-									query = strings.ReplaceAll(query, "@reload", "")
-									reload = true
-								}
-								prompt, text := FindPrompt(settings, llm, from_channel, query)
-								text = strings.Replace(text, "{NICK}", settings.Nick,-1)
-								text = strings.Replace(text, "{USER}", user,-1)
-								text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
-								if !mention && strings.HasSuffix(prompt, "/default") {
-									log.Printf("Skipping LLM query due to default prompt, mention, or " +
-														"reminder request.")
+								if rListReminders.MatchString(cleanQuery) {
+									/* List reminders. */
+									send_irc(settings.Name, from_channel, ListReminders(settings, user))
+									log.Printf("Deepseek reminder listing query:\n%v\n", cleanQuery)
+								} else if rDeleteReminder.MatchString(cleanQuery) {
+									/* Delete a reminder. */
+									matches := rDeleteReminder.FindStringSubmatch(cleanQuery)
+									if len(matches) > 2 {
+										id, err := strconv.Atoi(matches[2])
+										if err == nil {
+											send_irc(settings.Name, from_channel, DeleteReminder(settings,
+												user, id))
+											log.Printf("%s requested to delete reminder ID %d", user, id)
+										}
+									}
+								} else if rChangeReminder.MatchString(cleanQuery) {
+									/* Change reminder. */
+									matches := rChangeReminder.FindStringSubmatch(cleanQuery)
+									if len(matches) > 3 {
+										id, err := strconv.Atoi(matches[2])
+										newDetails := matches[3]
+										if err == nil {
+											req := DeepseekRequest{
+												channel:       from_channel,
+												Server:        settings.Name,
+												request:       fmt.Sprintf("Reminder ID: %d, Details: %s", id, newDetails),
+												PromptName:    "reminder_change_parse",
+												OriginalQuery: cleanQuery,
+												User:          user,
+											}
+											DeepseekQueue <- req
+											log.Printf("%s requested to change reminder ID %d with details: %s",
+												user, id, newDetails)
+										}
+									}
+								} else if rReminder.MatchString(cleanQuery) {
+									req := DeepseekRequest{
+										channel:       from_channel,
+										Server:        settings.Name,
+										request:       cleanQuery,
+										PromptName:    "reminder_parse",
+										OriginalQuery: cleanQuery,
+										User:          user,
+									}
+									DeepseekQueue <- req
+									log.Printf("Deepseek reminder parsing query:\n%v\n", req)
 								} else {
+									/* Handle other commands like @reset, @reload, or default chat. */
+									reload := false
+									reset := false
+									if strings.Contains(cleanQuery, "@reset") {
+										cleanQuery = strings.ReplaceAll(cleanQuery, "@reset", "")
+										reset = true
+									}
+									if strings.Contains(cleanQuery, "@reload") {
+										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
+										reload = true
+									}
+									_, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-									req := DeepseekRequest{from_channel, text, query, reload, reset, "", query, user}
+									req := DeepseekRequest{from_channel, settings.Name, text,
+										cleanQuery, reload, reset, "", cleanQuery, user}
+									DeepseekQueue <- req
+									log.Printf("Deepseek query:\n%v\n", req)
+								}
+							} else {
+								prompt, _ := FindPrompt(settings, llm, from_channel, query)
+								if strings.HasSuffix(prompt, "/default") {
+									log.Printf("Skipping LLM query due to default prompt and no mention.")
+								} else {
+									_, text := FindPrompt(settings, llm, from_channel, query)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+
+									req := DeepseekRequest{from_channel, settings.Name, text,
+										query, false, false, "", query, user}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}
@@ -271,7 +326,6 @@ func irc_loop(settings *ServerConfig) {
 					}
 				}
 			}
-
 		}
 		if breakout {
 			break

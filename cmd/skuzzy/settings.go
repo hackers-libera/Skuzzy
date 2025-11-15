@@ -6,12 +6,11 @@ import (
 	"os"
 )
 
-
 type ChannelConfig struct {
 	Name              string   `yaml:"name"`
 	LLM               string   `yaml:"llm,omitempty"`
 	SysPromptsEnabled []string `yaml:"sys_prompts_enabled"`
-	Backlog []string
+	Backlog           []string
 }
 
 type LLM struct {
@@ -33,10 +32,11 @@ type ServerConfig struct {
 	SysPrompts            map[string]string `yaml:"sys_prompts"`
 	SysPromptGlobalPrefix string            `yaml:"sys_prompt_global_suffix"`
 	DeepseekAPIKey        string            `yaml:"deepseek_api_key"`
+	MaxRemindersPerUser   int               `yaml:"max_reminders_per_user"`
 	ServerLogFile         string            `yaml:"server_log_file"`
 }
 
-func LoadServerConfig(path string) (*ServerConfig,error) {
+func LoadServerConfig(path string) (*ServerConfig, error) {
 
 	var config ServerConfig
 
