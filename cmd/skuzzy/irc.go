@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strconv"
 	"net"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -109,9 +109,12 @@ func mentioned(nick string, query string) bool {
 }
 
 /* Regex to parse reminder requests. */
-var rReminder = regexp.MustCompile(`(?i)remind|reminder`)                      /* Set reminder. */
-var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)             /* List reminders. */
-var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`) /* Delete reminder. */
+var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
+var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
+var rDeleteReminder = regexp.MustCompile(
+	`(?i)(delete|remove) reminder (?:id )?(\d+)`)
+var rChangeReminder = regexp.MustCompile(
+	`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -248,9 +251,30 @@ func irc_loop(settings *ServerConfig) {
 											log.Printf("%s requested to delete reminder ID %d", user, id)
 										}
 									}
+								} else if rChangeReminder.MatchString(cleanQuery) {
+									/* Change reminder. */
+									matches := rChangeReminder.FindStringSubmatch(cleanQuery)
+									if len(matches) > 3 {
+										id, err := strconv.Atoi(matches[2])
+										newDetails := matches[3]
+										if err == nil {
+											req := DeepseekRequest{
+												channel:       from_channel,
+												Server:        settings.Name,
+												request:       fmt.Sprintf("Reminder ID: %d, Details: %s", id, newDetails),
+												PromptName:    "reminder_change_parse",
+												OriginalQuery: cleanQuery,
+												User:          user,
+											}
+											DeepseekQueue <- req
+											log.Printf("%s requested to change reminder ID %d with details: %s",
+												user, id, newDetails)
+										}
+									}
 								} else if rReminder.MatchString(cleanQuery) {
 									req := DeepseekRequest{
 										channel:       from_channel,
+										Server:        settings.Name,
 										request:       cleanQuery,
 										PromptName:    "reminder_parse",
 										OriginalQuery: cleanQuery,
@@ -276,7 +300,8 @@ func irc_loop(settings *ServerConfig) {
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-									req := DeepseekRequest{from_channel, text, cleanQuery, reload, reset, "", cleanQuery, user}
+									req := DeepseekRequest{from_channel, settings.Name, text,
+										cleanQuery, reload, reset, "", cleanQuery, user}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}
@@ -291,7 +316,8 @@ func irc_loop(settings *ServerConfig) {
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-									req := DeepseekRequest{from_channel, text, query, false, false, "", query, user}
+									req := DeepseekRequest{from_channel, settings.Name, text,
+										query, false, false, "", query, user}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}

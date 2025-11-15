@@ -48,3 +48,14 @@ sys_prompts:
   reminder_fire: >-
     It's time to remind the {USER} to {MESSAGE}. Create a reminder message
     in your unique style. Be sure to ping the user.
+  reminder_change_parse: >-
+    You are a reminder modification assistant. Your only job is to analyse the
+    following text, which contains a reminder ID and details for a change.
+    Extract the reminder ID, any new duration, and any new reminder message.
+    Respond ONLY with a JSON object with three fields: "reminder_id" (integer),
+    "new_duration_minutes" (integer), and "new_reminder_message" (string).
+    If a field is not present in the user's request, set its value to 0 or an
+    empty string. Convert all durations (e.g., hours) to minutes.
+    Example Request: "Reminder ID: 12, get food in 2 hours"
+    Example response: {"reminder_id": 12, "new_duration_minutes": 120,
+    "new_reminder_message": "get food"}
