@@ -9,19 +9,19 @@ import (
 
 /* Holds information for a single reminder. */
 type Reminder struct {
-	Server		string
-	Channel		string
-	User			string
-	Message		string
-	EndTime		time.Time
-	Timer			*time.Timer
+	Server  string
+	Channel string
+	User    string
+	Message string
+	EndTime time.Time
+	Timer   *time.Timer
 }
 
 var (
 	/* Holds all active reminders, keyed by a server/channel string. */
-	Reminders			= make(map[string][]*Reminder)
+	Reminders = make(map[string][]*Reminder)
 	/* Protect against concurrent access. */
-	ReminderMutex	= sync.RWMutex{}
+	ReminderMutex = sync.RWMutex{}
 )
 
 /* Schdules a new reminder. */
@@ -32,26 +32,26 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 	key := fmt.Sprintf("%s/%s", reminder.Server, reminder.Channel)
 	Reminders[key] = append(Reminders[key], reminder)
 	log.Printf("Scheduled reminder for %s in channel %s: %s", reminder.User,
-						reminder.Channel, reminder.Message)
+		reminder.Channel, reminder.Message)
 
 	/* Schedule the reminder. */
 	reminder.Timer = time.AfterFunc(time.Until(reminder.EndTime), func() {
 		/*
-	   * When the timer fires, create a request for the LLM to generate
-	   * the reminder message.
-	   */
-		reminderPrompt := fmt.Sprintf("It's time to remind the user %s to %s. "		+
-																	"Create a reminder message in your unique "	+
-																	"style. Be sure to ping the user.",
-																	reminder.User, reminder.Message)
+		 * When the timer fires, create a request for the LLM to generate
+		 * the reminder message.
+		 */
+		reminderPrompt := fmt.Sprintf("It's time to remind the user %s to %s. "+
+			"Create a reminder message in your unique "+
+			"style. Be sure to ping the user.",
+			reminder.User, reminder.Message)
 
 		/* Send the default prompt. */
 		_, sysPrompt := FindPrompt(settings, "deepseek", reminder.Channel, "reminder")
 
-		req := DeepseekRequest {
-			channel:		reminder.Channel,
-			request:		reminderPrompt,
-			sysprompt:	sysPrompt,
+		req := DeepseekRequest{
+			channel:   reminder.Channel,
+			request:   reminderPrompt,
+			sysprompt: sysPrompt,
 		}
 		DeepseekQueue <- req
 
@@ -62,6 +62,7 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 
 /* Remove reminder from the active reminders list. */
 func RemoveReminder(reminder *Reminder) {
+	log.Printf("Removing Reminder for:%s\n", reminder.Message)
 	ReminderMutex.Lock()
 	defer ReminderMutex.Unlock()
 

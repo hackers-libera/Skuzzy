@@ -2,17 +2,15 @@ package main
 
 import (
 	"context"
-	"log"
+	deepseek "github.com/cohesion-org/deepseek-go"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 	"sync" /* For RWMutex. */
-    deepseek "github.com/cohesion-org/deepseek-go"
-
+	"time"
 )
-
 
 var rGreet, _ = regexp.Compile(`(?i)(hi+$|howdy$|hello$|hey+$|hai+$|ahoy|greetings$)[\. ]*`)
 
@@ -20,14 +18,14 @@ var SysPrompts = make(map[string]string)
 var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
-	channel   		string
-	sysprompt 		string
-	request   		string
-	reload    		bool
-	reset     		bool
-	PromptName		string
+	channel       string
+	sysprompt     string
+	request       string
+	reload        bool
+	reset         bool
+	PromptName    string
 	OriginalQuery string /* Store orig query for re-processing if needed. */
-	User					string /* Going to need the user who sent the message too. */
+	User          string /* Going to need the user who sent the message too. */
 }
 
 var DeepseekQueue = make(chan DeepseekRequest)
@@ -55,23 +53,23 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		if req.PromptName == "reminder_parse" {
 			/* Specific prompt for parsing reminders. */
 			currentSysPrompt = "You are a reminder parsing assistant. Your only job " +
-													"is to  analyse the following text and extract the " +
-													"duration and the reminder message. " +
-													"Respond ONLY with a JSON object with two fields: " +
-													"\"is_reminder\" (boolean), \"duration_minutes\" (integer) " +
-													"and \"reminder_message\" (string). Convert all " +
-													"durations (e.g., hours) to minutes. If you cannot " +
-													"determine the duration or message, set \"is_reminder\" " +
-													"to false. Example: " +
-													"{\"is_reminder\": true, \"duration_minutes\": 120, " +
-													"\"reminder_message\": \"Get food!\"}"
+				"is to  analyse the following text and extract the " +
+				"duration and the reminder message. " +
+				"Respond ONLY with a JSON object with two fields: " +
+				"\"is_reminder\" (boolean), \"duration_minutes\" (integer) " +
+				"and \"reminder_message\" (string). Convert all " +
+				"durations (e.g., hours) to minutes. If you cannot " +
+				"determine the duration or message, set \"is_reminder\" " +
+				"to false. Example: " +
+				"{\"is_reminder\": true, \"duration_minutes\": 120, " +
+				"\"reminder_message\": \"Get food!\"}"
 		}
 
 		request := &deepseek.ChatCompletionRequest{
 			Model: model,
 			Messages: []deepseek.ChatCompletionMessage{
 				{Role: deepseek.ChatMessageRoleSystem, Content: currentSysPrompt +
-							 "." + settings.SysPromptGlobalPrefix},
+					"." + settings.SysPromptGlobalPrefix},
 				{Role: deepseek.ChatMessageRoleUser, Content: req.request},
 			},
 		}
@@ -87,14 +85,14 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		if req.PromptName == "reminder_parse" {
 			/* Send LLM JSON response to the ReminderParseQueue. */
 			ReminderParseQueue <- struct {
-				Result			string
-				OriginalReq	DeepseekRequest
+				Result      string
+				OriginalReq DeepseekRequest
 			}{Result: deepseek_response, OriginalReq: req}
 		} else {
 			log.Printf("Deepseek response:%s\n", deepseek_response)
 			send_irc(settings.Name, req.channel, deepseek_response)
 		}
-	} 
+	}
 }
 
 func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {

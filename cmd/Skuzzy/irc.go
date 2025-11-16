@@ -10,12 +10,13 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
 type Connection struct {
-	cx net.Conn
+	cx   net.Conn
+	pong int64
 }
 
 var Connections = make(map[string]Connection)
@@ -50,9 +51,8 @@ func send_irc(server string, channel string, message string) {
 
 		msg = fmt.Sprintf("%s\r\n", message)
 	}
-	ConnectionsMutex.RLock()
+
 	send_irc_raw(Connections[server], msg)
-	ConnectionsMutex.RUnlock()
 
 	if remaining_message != "" {
 		send_irc(server, channel, remaining_message)
@@ -60,6 +60,8 @@ func send_irc(server string, channel string, message string) {
 }
 
 func send_irc_raw(conn Connection, msg string) {
+	ConnectionsMutex.RLock()
+	defer ConnectionsMutex.RUnlock()
 	_, err := conn.cx.Write([]byte(msg))
 	if err != nil {
 		log.Printf("Failed to send IRC message:%v\nError:%v\n", msg, err)
@@ -67,10 +69,12 @@ func send_irc_raw(conn Connection, msg string) {
 	fmt.Printf("< %v", msg)
 }
 func send_irc_raw_secret(conn Connection, msg string) {
-    _, err := conn.cx.Write([]byte(msg))
-    if err != nil {
-        log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
-    }
+	ConnectionsMutex.RLock()
+	defer ConnectionsMutex.RUnlock()
+	_, err := conn.cx.Write([]byte(msg))
+	if err != nil {
+		log.Printf("Failed to send IRC message containing a secret:\nError:%v\n", err)
+	}
 }
 func irc_connect(settings *ServerConfig) error {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
@@ -81,7 +85,7 @@ func irc_connect(settings *ServerConfig) error {
 		return err
 	}
 	ConnectionsMutex.Lock()
-	Connections[settings.Name] = Connection{conn}
+	Connections[settings.Name] = Connection{conn, time.Now().Unix()}
 	ConnectionsMutex.Unlock()
 	Server = settings.Name
 
@@ -103,12 +107,38 @@ func CloseConnections() {
 }
 
 func mentioned(nick string, query string) bool {
-
-	return strings.HasPrefix(strings.ToLower(query), strings.ToLower(nick)) 
+	var rMention = regexp.MustCompile(`(?i)^` + nick + `[,:\- ]+`)
+	log.Printf("Mention regex:%s\n", `(?i)^`+nick+`[,:\- ]+`)
+	return rMention.MatchString(query)
 }
 
 /* Regex to parse reminder requests. */
 var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
+
+func Ping(settings *ServerConfig) {
+    timeout := int64(499)
+    sleep := time.Duration(int(timeout/2))
+	for {
+		ConnectionsMutex.RLock()
+		pong := Connections[settings.Name].pong
+		ConnectionsMutex.RUnlock()
+
+		latency := time.Now().Unix() - pong
+		log.Printf("[PING] latency %d, pong %d\n", latency, pong)
+		if pong > 0 && latency > timeout {
+			log.Printf("[PING] %s has latency %d >= %d, starting a new server and breaking PING routine.\n", settings.Name, latency,timeout)
+			go ServerRun(settings)
+			break
+		} else if pong > 0 && latency > timeout/2 {
+			log.Printf("[PING] %s has latency %d >= %v.\n", settings.Name, latency,sleep)
+			time.Sleep(sleep * time.Second)
+			continue
+		}
+		send_irc_raw(Connections[settings.Name], "PING :HACK THE PLANET\r\n")
+		time.Sleep( sleep* time.Second)
+	}
+
+}
 
 func irc_loop(settings *ServerConfig) {
 	log.Printf("IRC message loop for %s\n", settings.Name)
@@ -116,14 +146,12 @@ func irc_loop(settings *ServerConfig) {
 	cx := Connections[settings.Name].cx
 	ConnectionsMutex.RUnlock()
 
-	ConnectionsMutex.RLock()
 	send_irc_raw(Connections[settings.Name], "CAP REQ :sasl\r\n")
-	ConnectionsMutex.RUnlock()
 
 	auth_sent := false
 	breakout := false
 
-	cx.SetReadDeadline(time.Now().Add(240*time.Second))
+	cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 
 	for {
 		buf := make([]byte, 65535)
@@ -135,14 +163,12 @@ func irc_loop(settings *ServerConfig) {
 			}
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				log.Printf("[%s] Read timeout, sending PING to server.", settings.Name)
-				ConnectionsMutex.RLock()
 				send_irc_raw(Connections[settings.Name], fmt.Sprintf("PING %s\r\n", settings.Host))
-				ConnectionsMutex.RUnlock()
-				cx.SetReadDeadline(time.Now().Add(240*time.Second))
+				cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 				continue
 			}
 		} else if nbytes > 0 {
-			cx.SetReadDeadline(time.Now().Add(240*time.Second))
+			cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 			for _, line := range strings.Split(string(buf), "\n") {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
@@ -151,15 +177,11 @@ func irc_loop(settings *ServerConfig) {
 				fmt.Printf(">%v\n", response)
 
 				if !auth_sent && strings.HasSuffix(response, "ACK :sasl") {
-					ConnectionsMutex.RLock()
 					send_irc_raw(Connections[settings.Name], "AUTHENTICATE PLAIN\r\n")
-					ConnectionsMutex.RUnlock()
 				} else if !auth_sent && response == "AUTHENTICATE +" {
 					PLAIN := []byte(fmt.Sprintf("\x00%s\x00%s", settings.SaslUser, settings.SaslPassword))
 					auth_sent = true
-					ConnectionsMutex.RLock()
 					send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("AUTHENTICATE %s\r\n", base64.StdEncoding.EncodeToString(PLAIN)))
-					ConnectionsMutex.RUnlock()
 				} else if words_len >= 2 {
 					if strings.HasPrefix(words[1], "90") && !slices.Contains([]string{"900", "901", "902", "903"}, words[1]) {
 						auth_sent = false
@@ -167,33 +189,36 @@ func irc_loop(settings *ServerConfig) {
 						breakout = true
 					} else if words[1] == "903" {
 						log.Printf("SASL authentication succesful")
-						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], "CAP END\r\n")
-						ConnectionsMutex.RUnlock()
 
-						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
-						ConnectionsMutex.RUnlock()
-						ConnectionsMutex.RLock()
 						send_irc_raw_secret(Connections[settings.Name], fmt.Sprintf("PRIVMSG NICKSERV :IDENTIFY %s %s\r\n", settings.Nick, settings.NickservPassword))
-						ConnectionsMutex.RUnlock()
-						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("USER %s 0 * :%s\r\n", settings.NickservUsername, settings.NickservUsername))
-						ConnectionsMutex.RUnlock()
 					} else if words[1] == "MODE" && words[0] == ":"+settings.Nick {
 
 						for _, channel := range settings.Channels {
-							ConnectionsMutex.RLock()
 							send_irc_raw(Connections[settings.Name], fmt.Sprintf("JOIN %s\r\n", channel.Name))
-							ConnectionsMutex.RUnlock()
 							Channel = channel.Name
 						}
 
 					} else if words[0] == "PING" {
-						ConnectionsMutex.RLock()
 						send_irc_raw(Connections[settings.Name], strings.Replace(response, "PING", "PONG", 1)+"\r\n")
-						ConnectionsMutex.RUnlock()
-					} else if words[1] == "PRIVMSG" && words_len >= 3 {
+					} else if words[0] == "PONG" && strings.HasSuffix(response, ":HACK THE PLANET") {
+						if conn, ok := Connections[settings.Name]; ok {
+							conn.pong = time.Now().Unix()
+							ConnectionsMutex.Lock()
+							Connections[settings.Name] = conn
+							ConnectionsMutex.Unlock()
+							log.Println("!PONG!")
+						}
+					} else if words[1] == "433" && len(settings.Nick) < 32 {
+                            if strings.HasSuffix(settings.Nick,"_") && len(settings.Nick)>16 {
+                            	settings.Nick = "_"+settings.Nick
+                            } else {
+                            	settings.Nick = settings.Nick +"_"
+                            }
+						    send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
+  					} else if words[1] == "PRIVMSG" && words_len >= 3 {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
 						user := strings.TrimLeft(words[0], ":")
@@ -228,18 +253,18 @@ func irc_loop(settings *ServerConfig) {
 							var handledAsReminder bool
 							/* Check for reminder keyword. */
 							if rReminder.MatchString(query) {
-								req := DeepseekRequest {
-									channel:				from_channel,
-									request:				query,
-									PromptName:			"reminder_parse",
-									OriginalQuery:	query,
-									User:						user,
+								req := DeepseekRequest{
+									channel:       from_channel,
+									request:       query,
+									PromptName:    "reminder_parse",
+									OriginalQuery: query,
+									User:          user,
 								}
 								DeepseekQueue <- req
 								log.Printf("Deepseek reminder parsing query:\n%v\n", req)
 								handledAsReminder = true
 							}
-							
+
 							if !handledAsReminder {
 								reload := false
 								mention := mentioned(settings.Nick, query)
@@ -253,13 +278,13 @@ func irc_loop(settings *ServerConfig) {
 									reload = true
 								}
 								prompt, text := FindPrompt(settings, llm, from_channel, query)
-								text = strings.Replace(text, "{NICK}", settings.Nick,-1)
-								text = strings.Replace(text, "{USER}", user,-1)
-								text = strings.Replace(text, "{CHANNEL}", from_channel,-1)
-								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog,"\n"),-1)
+								text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+								text = strings.Replace(text, "{USER}", user, -1)
+								text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 								if !mention && strings.HasSuffix(prompt, "/default") {
 									log.Printf("Skipping LLM query due to default prompt, mention, or " +
-														"reminder request.")
+										"reminder request.")
 								} else {
 
 									req := DeepseekRequest{from_channel, text, query, reload, reset, "", query, user}

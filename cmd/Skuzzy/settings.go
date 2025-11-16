@@ -6,12 +6,11 @@ import (
 	"os"
 )
 
-
 type ChannelConfig struct {
 	Name              string   `yaml:"name"`
 	LLM               string   `yaml:"llm,omitempty"`
 	SysPromptsEnabled []string `yaml:"sys_prompts_enabled"`
-	Backlog []string
+	Backlog           []string
 }
 
 type LLM struct {
@@ -36,7 +35,7 @@ type ServerConfig struct {
 	ServerLogFile         string            `yaml:"server_log_file"`
 }
 
-func LoadServerConfig(path string) (*ServerConfig,error) {
+func LoadServerConfig(path string) (*ServerConfig, error) {
 
 	var config ServerConfig
 
