@@ -42,7 +42,7 @@ func ServerRun(settings *ServerConfig) {
 			go Deepseek(settings, llm)
 		}
 	}
-	go Ping(settings)
+	//go Ping(settings)
 	irc_loop(settings)
 }
 func server(configuration string) {
