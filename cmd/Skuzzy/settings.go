@@ -32,6 +32,7 @@ type ServerConfig struct {
 	SysPrompts            map[string]string `yaml:"sys_prompts"`
 	SysPromptGlobalPrefix string            `yaml:"sys_prompt_global_suffix"`
 	DeepseekAPIKey        string            `yaml:"deepseek_api_key"`
+	MaxRemindersPerUser   int               `yaml:"max_reminders_per_user"`
 	ServerLogFile         string            `yaml:"server_log_file"`
 }
 

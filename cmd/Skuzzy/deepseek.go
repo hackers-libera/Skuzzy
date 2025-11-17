@@ -19,6 +19,7 @@ var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
 	channel       string
+	Server        string
 	sysprompt     string
 	request       string
 	reload        bool
@@ -52,17 +53,9 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		currentSysPrompt := req.sysprompt
 		if req.PromptName == "reminder_parse" {
 			/* Specific prompt for parsing reminders. */
-			currentSysPrompt = "You are a reminder parsing assistant. Your only job " +
-				"is to  analyse the following text and extract the " +
-				"duration and the reminder message. " +
-				"Respond ONLY with a JSON object with two fields: " +
-				"\"is_reminder\" (boolean), \"duration_minutes\" (integer) " +
-				"and \"reminder_message\" (string). Convert all " +
-				"durations (e.g., hours) to minutes. If you cannot " +
-				"determine the duration or message, set \"is_reminder\" " +
-				"to false. Example: " +
-				"{\"is_reminder\": true, \"duration_minutes\": 120, " +
-				"\"reminder_message\": \"Get food!\"}"
+			currentSysPrompt = settings.SysPrompts["reminder_parse"]
+		} else if req.PromptName == "reminder_change_parse" {
+			currentSysPrompt = settings.SysPrompts["reminder_change_parse"]
 		}
 
 		request := &deepseek.ChatCompletionRequest{
@@ -82,9 +75,7 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		}
 
 		deepseek_response := response.Choices[0].Message.Content
-		if req.PromptName == "reminder_parse" {
-			/* Send LLM JSON response to the ReminderParseQueue. */
-			ReminderParseQueue <- struct {
+		        if req.PromptName == "reminder_parse" || req.PromptName == "reminder_change_parse" {			ReminderParseQueue <- struct {
 				Result      string
 				OriginalReq DeepseekRequest
 			}{Result: deepseek_response, OriginalReq: req}

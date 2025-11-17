@@ -1,0 +1,377 @@
+From 44ed7e844c7dd93d102873b428a8d52cd1f735e5 Mon Sep 17 00:00:00 2001
+From: Ritchie Cunningham <ritchie@ritchiecunningham.co.uk>
+Date: Sat, 15 Nov 2025 02:31:14 +0000
+Subject: [PATCH 7/8] [Add] Change user reminders.
+
+---
+ cmd/skuzzy/deepseek.go         | 37 +++++++--------
+ cmd/skuzzy/irc.go              | 38 +++++++++++++---
+ cmd/skuzzy/reminder_handler.go | 82 +++++++++++++++++++++++-----------
+ cmd/skuzzy/reminders.go        | 58 ++++++++++++++++++++++++
+ libera-example.yaml            | 11 +++++
+ 5 files changed, 175 insertions(+), 51 deletions(-)
+
+diff --git a/cmd/Skuzzy/deepseek.go b/cmd/Skuzzy/deepseek.go
+index b85c68f..a3f4e9f 100644
+--- a/cmd/Skuzzy/deepseek.go
++++ b/cmd/Skuzzy/deepseek.go
+@@ -2,32 +2,31 @@ package main
+ 
+ import (
+ 	"context"
+-	"log"
++	deepseek "github.com/cohesion-org/deepseek-go"
+ 	"io"
++	"log"
+ 	"net/http"
+ 	"regexp"
+ 	"strings"
+-	"time"
+ 	"sync" /* For RWMutex. */
+-    deepseek "github.com/cohesion-org/deepseek-go"
+-
++	"time"
+ )
+ 
+-
+ var rGreet, _ = regexp.Compile(`(?i)(hi+$|howdy$|hello$|hey+$|hai+$|ahoy|greetings$)[\. ]*`)
+ 
+ var SysPrompts = make(map[string]string)
+ var SysPromptsMutex = sync.RWMutex{}
+ 
+ type DeepseekRequest struct {
+-	channel   		string
+-	sysprompt 		string
+-	request   		string
+-	reload    		bool
+-	reset     		bool
+-	PromptName		string
++	channel       string
++	Server        string
++	sysprompt     string
++	request       string
++	reload        bool
++	reset         bool
++	PromptName    string
+ 	OriginalQuery string /* Store orig query for re-processing if needed. */
+-	User					string /* Going to need the user who sent the message too. */
++	User          string /* Going to need the user who sent the message too. */
+ }
+ 
+ var DeepseekQueue = make(chan DeepseekRequest)
+@@ -55,13 +54,15 @@ func Deepseek(settings *ServerConfig, llm LLM) {
+ 		if req.PromptName == "reminder_parse" {
+ 			/* Specific prompt for parsing reminders. */
+ 			currentSysPrompt = settings.SysPrompts["reminder_parse"]
++		} else if req.PromptName == "reminder_change_parse" {
++			currentSysPrompt = settings.SysPrompts["reminder_change_parse"]
+ 		}
+ 
+ 		request := &deepseek.ChatCompletionRequest{
+ 			Model: model,
+ 			Messages: []deepseek.ChatCompletionMessage{
+ 				{Role: deepseek.ChatMessageRoleSystem, Content: currentSysPrompt +
+-							 "." + settings.SysPromptGlobalPrefix},
++					"." + settings.SysPromptGlobalPrefix},
+ 				{Role: deepseek.ChatMessageRoleUser, Content: req.request},
+ 			},
+ 		}
+@@ -74,17 +75,17 @@ func Deepseek(settings *ServerConfig, llm LLM) {
+ 		}
+ 
+ 		deepseek_response := response.Choices[0].Message.Content
+-		if req.PromptName == "reminder_parse" {
++		if req.PromptName == "reminder_parse" || req.PromptName == "reminder_change_parse" {
+ 			/* Send LLM JSON response to the ReminderParseQueue. */
+ 			ReminderParseQueue <- struct {
+-				Result			string
+-				OriginalReq	DeepseekRequest
++				Result      string
++				OriginalReq DeepseekRequest
+ 			}{Result: deepseek_response, OriginalReq: req}
+ 		} else {
+ 			log.Printf("Deepseek response:%s\n", deepseek_response)
+-			send_irc(settings.Name, req.channel, deepseek_response)
++			send_irc(req.Server, req.channel, deepseek_response)
+ 		}
+-	} 
++	}
+ }
+ 
+ func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {
+diff --git a/cmd/Skuzzy/irc.go b/cmd/Skuzzy/irc.go
+index 9d8d809..bbbd0be 100644
+--- a/cmd/Skuzzy/irc.go
++++ b/cmd/Skuzzy/irc.go
+@@ -6,10 +6,10 @@ import (
+ 	"fmt"
+ 	"io"
+ 	"log"
+-	"strconv"
+ 	"net"
+ 	"regexp"
+ 	"slices"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -109,9 +109,12 @@ func mentioned(nick string, query string) bool {
+ }
+ 
+ /* Regex to parse reminder requests. */
+-var rReminder = regexp.MustCompile(`(?i)remind|reminder`)                      /* Set reminder. */
+-var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)             /* List reminders. */
+-var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`) /* Delete reminder. */
++var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
++var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
++var rDeleteReminder = regexp.MustCompile(
++	`(?i)(delete|remove) reminder (?:id )?(\d+)`)
++var rChangeReminder = regexp.MustCompile(
++	`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
+ 
+ func irc_loop(settings *ServerConfig) {
+ 	log.Printf("IRC message loop for %s\n", settings.Name)
+@@ -248,9 +251,30 @@ func irc_loop(settings *ServerConfig) {
+ 											log.Printf("%s requested to delete reminder ID %d", user, id)
+ 										}
+ 									}
++								} else if rChangeReminder.MatchString(cleanQuery) {
++									/* Change reminder. */
++									matches := rChangeReminder.FindStringSubmatch(cleanQuery)
++									if len(matches) > 3 {
++										id, err := strconv.Atoi(matches[2])
++										newDetails := matches[3]
++										if err == nil {
++											req := DeepseekRequest{
++												channel:       from_channel,
++												Server:        settings.Name,
++												request:       fmt.Sprintf("Reminder ID: %d, Details: %s", id, newDetails),
++												PromptName:    "reminder_change_parse",
++												OriginalQuery: cleanQuery,
++												User:          user,
++											}
++											DeepseekQueue <- req
++											log.Printf("%s requested to change reminder ID %d with details: %s",
++												user, id, newDetails)
++										}
++									}
+ 								} else if rReminder.MatchString(cleanQuery) {
+ 									req := DeepseekRequest{
+ 										channel:       from_channel,
++										Server:        settings.Name,
+ 										request:       cleanQuery,
+ 										PromptName:    "reminder_parse",
+ 										OriginalQuery: cleanQuery,
+@@ -276,7 +300,8 @@ func irc_loop(settings *ServerConfig) {
+ 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+ 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+ 
+-									req := DeepseekRequest{from_channel, text, cleanQuery, reload, reset, "", cleanQuery, user}
++									req := DeepseekRequest{from_channel, settings.Name, text,
++										cleanQuery, reload, reset, "", cleanQuery, user}
+ 									DeepseekQueue <- req
+ 									log.Printf("Deepseek query:\n%v\n", req)
+ 								}
+@@ -291,7 +316,8 @@ func irc_loop(settings *ServerConfig) {
+ 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+ 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+ 
+-									req := DeepseekRequest{from_channel, text, query, false, false, "", query, user}
++									req := DeepseekRequest{from_channel, settings.Name, text,
++										query, false, false, "", query, user}
+ 									DeepseekQueue <- req
+ 									log.Printf("Deepseek query:\n%v\n", req)
+ 								}
+diff --git a/cmd/Skuzzy/reminder_handler.go b/cmd/Skuzzy/reminder_handler.go
+index ea91c86..703a722 100644
+--- a/cmd/Skuzzy/reminder_handler.go
++++ b/cmd/Skuzzy/reminder_handler.go
+@@ -15,6 +15,13 @@ type ReminderParseResult struct {
+ 	ReminderMessage string `json:"reminder_message"`
+ }
+ 
++/* Holds structured data from the LLM's reminder change parsing. */
++type ReminderChangeParseResult struct {
++	ReminderID         int    `json:"reminder_id"`
++	NewDurationMinutes int    `json:"new_duration_minutes"`
++	NewReminderMessage string `json:"new_reminder_message"`
++}
++
+ /* Channel for receiving parsed reminder data from the LLM. */
+ var ReminderParseQueue = make(chan struct {
+ 	Result      string
+@@ -25,38 +32,59 @@ var ReminderParseQueue = make(chan struct {
+ func ReminderHandler(settings *ServerConfig) {
+ 	for {
+ 		parsedData := <-ReminderParseQueue
+-		var result ReminderParseResult
+-		err := json.Unmarshal([]byte(parsedData.Result), &result)
+-		if err != nil {
+-			log.Printf("Error parsing reminder JSON from LLM: %v", err)
+-			requeueAsChat(settings, parsedData.OriginalReq)
+-			continue
+-		}
+ 
+-		if result.IsReminder && result.DurationMinutes > 0 {
+-			/* It's valid, so go ahead and schedule. */
+-			reminder := &Reminder{
+-				Server:  settings.Name,
+-				Channel: parsedData.OriginalReq.channel,
+-				User:    parsedData.OriginalReq.User,
+-				Message: result.ReminderMessage,
+-				EndTime: time.Now().Add(time.Duration(result.DurationMinutes) * time.Minute),
++		if parsedData.OriginalReq.PromptName == "reminder_parse" {
++			var result ReminderParseResult
++			err := json.Unmarshal([]byte(parsedData.Result), &result)
++			if err != nil {
++				log.Printf("Error parsing reminder JSON from LLM: %v", err)
++				requeueAsChat(settings, parsedData.OriginalReq)
++				continue
+ 			}
+-			AddReminder(settings, reminder)
++			if result.IsReminder && result.DurationMinutes > 0 {
++				reminder := &Reminder{
++					Server:  parsedData.OriginalReq.Server, /* We should use server from origreq. */
++					Channel: parsedData.OriginalReq.channel,
++					User:    parsedData.OriginalReq.User,
++					Message: result.ReminderMessage,
++					EndTime: time.Now().Add(time.Duration(result.DurationMinutes) * time.Minute),
++				}
++				AddReminder(settings, reminder)
+ 
+-			/* Now send a request to the LLM to confirm the reminder. */
+-			req := DeepseekRequest{
+-				channel: parsedData.OriginalReq.channel,
+-				request: fmt.Sprintf("You have scheduled a reminder for %s in %d minutes to %s.",
+-					reminder.User, result.DurationMinutes, reminder.Message),
+-				sysprompt:  settings.SysPrompts["reminder_confirm"],
+-				PromptName: "reminder_confirm",
+-				User:       parsedData.OriginalReq.User,
++				/* Send a request to the LLM to confirm the reminder. */
++				req := DeepseekRequest{
++					Server:  parsedData.OriginalReq.Server,
++					channel: parsedData.OriginalReq.channel,
++					request: fmt.Sprintf("You have scheduled a reminder for %s in %d minutes to %s.",
++						reminder.User, result.DurationMinutes, reminder.Message),
++					sysprompt:  settings.SysPrompts["reminder_confirm"],
++					PromptName: "reminder_confirm",
++					User:       parsedData.OriginalReq.User,
++				}
++				DeepseekQueue <- req
++			} else {
++				/* Not a reminder, so re-queue as regular chat message. */
++				requeueAsChat(settings, parsedData.OriginalReq)
+ 			}
+-			DeepseekQueue <- req
++		} else if parsedData.OriginalReq.PromptName == "reminder_change_parse" {
++			var result ReminderChangeParseResult
++			err := json.Unmarshal([]byte(parsedData.Result), &result)
++			if err != nil {
++				log.Printf("Error parsing reminder change JSON from LLM: %v", err)
++				send_irc(parsedData.OriginalReq.Server, parsedData.OriginalReq.channel,
++					fmt.Sprintf("%s: I could not understand your request to change reminder ID %d. "+
++						"Try again but better!", parsedData.OriginalReq.User, result.ReminderID))
++				continue
++			}
++
++			response := ChangeReminder(settings, parsedData.OriginalReq.User, result.ReminderID,
++				result.NewReminderMessage, result.NewDurationMinutes)
++
++			send_irc(parsedData.OriginalReq.Server, parsedData.OriginalReq.channel, response)
+ 		} else {
+-			/* Not a reminder, so re-queue as a regular chat message. */
+-			requeueAsChat(settings, parsedData.OriginalReq)
++			log.Printf("Unkown prompt name received in ReminderHandler: %s",
++				parsedData.OriginalReq.PromptName)
++			requeueAsChat(settings, parsedData.OriginalReq) /* Fallback to chat. */
+ 		}
+ 	}
+ }
+diff --git a/cmd/Skuzzy/reminders.go b/cmd/Skuzzy/reminders.go
+index cc7edb6..3dda55a 100644
+--- a/cmd/Skuzzy/reminders.go
++++ b/cmd/Skuzzy/reminders.go
+@@ -175,3 +175,61 @@ func DeleteReminder(settings *ServerConfig, user string, id int) string {
+ 	}
+ 	return response
+ }
++
++/* Modify an existing reminder by ID for given user. */
++func ChangeReminder(settings *ServerConfig, user string, id int, newMessage string,
++	newDurationMinutes int) string {
++
++	ReminderMutex.Lock()
++	defer ReminderMutex.Unlock()
++
++	var response string
++	found := false
++
++	for _, reminderList := range Reminders {
++		for _, r := range reminderList {
++			if r.User == user && r.ID == id {
++				/* Update message if provided. */
++				if newMessage != "" {
++					r.Message = newMessage
++				}
++
++				/* Reschedule if new duration is provided. */
++				if newDurationMinutes > 0 {
++					/* Stop old timer. */
++					r.Timer.Stop()
++					/* Calculate new EndTime. */
++					r.EndTime = time.Now().Add(time.Duration(newDurationMinutes) * time.Minute)
++					/* Start new timer. */
++					r.Timer = time.AfterFunc(time.Until(r.EndTime), func() {
++						reminderPrompt := fmt.Sprintf(settings.SysPrompts["reminder_fire"],
++							r.User, r.Message)
++						req := DeepseekRequest{
++							channel:   r.Channel,
++							request:   reminderPrompt,
++							sysprompt: settings.SysPrompts["reminder_fire"],
++						}
++						DeepseekQueue <- req
++						RemoveReminder(r)
++					})
++				}
++
++				log.Printf("%s changed reminder ID %d. New message \"%s\", New Duration: %d minutes",
++					user, id, r.Message, newDurationMinutes)
++
++				response = fmt.Sprintf("%s: Reminder ID %d has been updated. New message: "+
++					"\"%s\", due in %s.", user, id, r.Message, formatDuration(time.Until(r.EndTime)))
++				found = true
++				break
++			}
++		}
++		if found {
++			break
++		}
++	}
++
++	if !found {
++		response = fmt.Sprintf("%s: No reminder found with ID %d for you.", user, id)
++	}
++	return response
++}
+diff --git a/libera-example.yaml b/libera-example.yaml
+index a9e4486..b9db459 100644
+--- a/libera-example.yaml
++++ b/libera-example.yaml
+@@ -48,3 +48,14 @@ sys_prompts:
+   reminder_fire: >-
+     It's time to remind the {USER} to {MESSAGE}. Create a reminder message
+     in your unique style. Be sure to ping the user.
++  reminder_change_parse: >-
++    You are a reminder modification assistant. Your only job is to analyse the
++    following text, which contains a reminder ID and details for a change.
++    Extract the reminder ID, any new duration, and any new reminder message.
++    Respond ONLY with a JSON object with three fields: "reminder_id" (integer),
++    "new_duration_minutes" (integer), and "new_reminder_message" (string).
++    If a field is not present in the user's request, set its value to 0 or an
++    empty string. Convert all durations (e.g., hours) to minutes.
++    Example Request: "Reminder ID: 12, get food in 2 hours"
++    Example response: {"reminder_id": 12, "new_duration_minutes": 120,
++    "new_reminder_message": "get food"}
+-- 
+2.48.1
+
