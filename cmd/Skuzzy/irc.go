@@ -281,7 +281,7 @@ func irc_loop(settings *ServerConfig) {
 								text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 								text = strings.Replace(text, "{USER}", user, -1)
 								text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
-								text = strings.Replace(text, "{VERSION}", "2.0", -1)
+								text = strings.Replace(text, "{VERSION}", "a665f24", -1)
 								text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 								if !mention && strings.HasSuffix(prompt, "/default") {
 									log.Printf("Skipping LLM query due to default prompt, mention, or " +
