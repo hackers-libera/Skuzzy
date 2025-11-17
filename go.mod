@@ -1,4 +1,4 @@
-module cmd/skuzzy
+module github.com/hackers-libera/cmd/Skuzzy
 
 go 1.24.10
 
