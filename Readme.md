@@ -1,4 +1,5 @@
 # Skuzzy
+[![Go Report Card](https://goreportcard.com/badge/github.com/hackers-libera/Skuzzy)](https://goreportcard.com/report/github.com/hackers-libera/Skuzzy)
 
 Skuzzy is an experimental IRC bot developed with the `#hackers` Libera.chat community in mind.
 
