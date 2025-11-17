@@ -9,6 +9,7 @@ import (
 	"net"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -315,13 +316,22 @@ func irc_loop(settings *ServerConfig) {
 										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
 										reload = true
 									}
-									_, text := FindPrompt(settings, llm, from_channel, cleanQuery)
-									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
-									text = strings.Replace(text, "{USER}", user, -1)
-									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
-									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
-
-									req := DeepseekRequest{from_channel, text, cleanQuery, reload, reset, "", cleanQuery, user}
+									                                    _, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+									                                    text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									                                    text = strings.Replace(text, "{USER}", user, -1)
+									                                    text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									                                    text = strings.Replace(text, "{VERSION}", "2.0", -1)
+									                                    text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+																		req := DeepseekRequest{
+										channel:       from_channel,
+										Server:        settings.Name,
+										sysprompt:     text,
+										request:       cleanQuery,
+										reload:        reload,
+										reset:         reset,
+										OriginalQuery: cleanQuery,
+										User:          user,
+									}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}
@@ -334,9 +344,19 @@ func irc_loop(settings *ServerConfig) {
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{VERSION}", "2.0", -1)
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-									req := DeepseekRequest{from_channel, text, query, false, false, "", query, user}
+																		req := DeepseekRequest{
+										channel:       from_channel,
+										Server:        settings.Name,
+										sysprompt:     text,
+										request:       query,
+										reload:        false,
+										reset:         false,
+										OriginalQuery: query,
+										User:          user,
+									}
 									DeepseekQueue <- req
 									log.Printf("Deepseek query:\n%v\n", req)
 								}

@@ -19,6 +19,7 @@ var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
 	channel       string
+	Server        string
 	sysprompt     string
 	request       string
 	reload        bool

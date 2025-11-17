@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -35,7 +36,7 @@ func ReminderHandler(settings *ServerConfig) {
 		err := json.Unmarshal([]byte(parsedData.Result), &result)
 		if err != nil {
 			log.Printf("Error parsing reminder JSON from LLM: %v", err)
-			requeueAsChat(parsedData.OriginalReq)
+			requeueAsChat(settings, parsedData.OriginalReq)
 			continue
 		}
 
