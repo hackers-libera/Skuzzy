@@ -62,10 +62,12 @@ func server(configuration string) {
 
 func main() {
 
-	go interact() // Keyboard interaction with the bot operator
-
 	for i, v := range os.Args {
 		if i > 0 {
+			if strings.HasSuffix(v, ".sock") {
+				go interact(v) // Keyboard interaction with the bot operator
+				continue
+			}
 			go server(v)
 		}
 

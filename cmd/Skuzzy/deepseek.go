@@ -75,7 +75,8 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		}
 
 		deepseek_response := response.Choices[0].Message.Content
-		        if req.PromptName == "reminder_parse" || req.PromptName == "reminder_change_parse" {			ReminderParseQueue <- struct {
+		if req.PromptName == "reminder_parse" || req.PromptName == "reminder_change_parse" {
+			ReminderParseQueue <- struct {
 				Result      string
 				OriginalReq DeepseekRequest
 			}{Result: deepseek_response, OriginalReq: req}

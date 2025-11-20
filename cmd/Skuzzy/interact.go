@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 )
@@ -11,6 +11,7 @@ import (
 var Server = ""
 var Channel = ""
 var Interactive = false
+var InteractQueue = make(chan string)
 
 const help_string = `
 Usage:
@@ -23,47 +24,77 @@ Usage:
 /interactive	turn interactive mode on or off
 `
 
-func interact() {
-	reader := bufio.NewReader(os.Stdin)
-
+func interact(socketPath string) {
+	os.Remove(socketPath)
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
+	if err != nil {
+		log.Printf("[interact] Error listening: %v\n", err)
+		return
+	}
+	defer listener.Close()
+	log.Printf("[interact] Listening on Unix socket: %s\n", socketPath)
+	buffer := make([]byte, 1024)
 	for {
-		input, _ := reader.ReadString('\n')
-		interact_triage(input)
+		conn, err := listener.AcceptUnix()
+		if err != nil {
+			log.Printf("[interact] Error accepting connection: %v\n", err)
+			continue
+		}
+		go interact_output(conn)
+		conn.Write([]byte("Connected to Skuzzy's bot control interface...\n"))
+		for {
+			n, err := conn.Read(buffer)
+			if err != nil {
+				log.Printf("[interact] Error reading from connection: %v\n", err)
+				break
+			}
+			input := buffer[:n]
+			interact_triage(string(input), conn)
+		}
 	}
 }
 
-func interact_triage(_input string) {
+func interact_triage(_input string, conn *net.UnixConn) {
 	input := strings.TrimSpace(strings.ToLower(_input))
 	if strings.HasPrefix(input, "/") {
 		switch strings.Split(input, " ")[0] {
 		case "/quit":
+			conn.Write([]byte("Exiting...\r\n"))
 			os.Exit(0)
 		case "/server":
 			Server = strings.TrimSpace(strings.Replace(input, "/server", "", 1))
-			log.Printf("Output server set to %v\n", Server)
+			conn.Write([]byte(fmt.Sprintf("Output server set to %v\n", Server)))
 		case "/channel":
 			Channel = strings.TrimSpace(strings.Replace(input, "/channel", "", 1))
-			log.Printf("Output channel set to %v\n", Channel)
+			conn.Write([]byte(fmt.Sprintf("Output channel set to %v\n", Channel)))
 		case "/info":
-			fmt.Printf("Current output:\nServer:%v\nChannel:%v\n", Server, Channel)
+			conn.Write([]byte(fmt.Sprintf("Current output:\nServer:%v\nChannel:%v\n", Server, Channel)))
 		case "/interactive":
 			if Interactive {
 				Interactive = false
-				log.Printf("Interactive mode turned off\n")
+				conn.Write([]byte(fmt.Sprintf("Interactive mode turned off\n")))
 
 			} else {
 				Interactive = true
-				log.Printf("Interactive mode turned on\n")
+				conn.Write([]byte(fmt.Sprintf("Interactive mode turned on\n")))
 			}
 		default:
-			fmt.Printf("Unknown command:'%v'\n", input)
+			conn.Write([]byte(fmt.Sprintf("Unknown command:'%v'\n", input)))
 			fallthrough
 		case "/help":
-			fmt.Print(help_string)
+			conn.Write([]byte(fmt.Sprint(help_string)))
 		}
 	} else {
 		if Interactive && Server != "" {
 			send_irc(Server, Channel, _input)
+			conn.Write([]byte(fmt.Sprintf("[<][%s/%s] %s\n", Server, Channel, _input)))
 		}
+	}
+}
+
+func interact_output(conn *net.UnixConn) {
+	for {
+		output := <-InteractQueue
+		conn.Write([]byte(output))
 	}
 }

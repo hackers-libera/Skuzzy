@@ -120,8 +120,8 @@ var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`)
 var rChangeReminder = regexp.MustCompile(`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
 
 func Ping(settings *ServerConfig) {
-    timeout := int64(499)
-    sleep := time.Duration(int(timeout/2))
+	timeout := int64(499)
+	sleep := time.Duration(int(timeout / 2))
 	for {
 		ConnectionsMutex.RLock()
 		pong := Connections[settings.Name].pong
@@ -130,16 +130,16 @@ func Ping(settings *ServerConfig) {
 		latency := time.Now().Unix() - pong
 		log.Printf("[PING] latency %d, pong %d\n", latency, pong)
 		if pong > 0 && latency > timeout {
-			log.Printf("[PING] %s has latency %d >= %d, starting a new server and breaking PING routine.\n", settings.Name, latency,timeout)
+			log.Printf("[PING] %s has latency %d >= %d, starting a new server and breaking PING routine.\n", settings.Name, latency, timeout)
 			go ServerRun(settings)
 			break
 		} else if pong > 0 && latency > timeout/2 {
-			log.Printf("[PING] %s has latency %d >= %v.\n", settings.Name, latency,sleep)
+			log.Printf("[PING] %s has latency %d >= %v.\n", settings.Name, latency, sleep)
 			time.Sleep(sleep * time.Second)
 			continue
 		}
 		send_irc_raw(Connections[settings.Name], "PING :HACK THE PLANET\r\n")
-		time.Sleep( sleep* time.Second)
+		time.Sleep(sleep * time.Second)
 	}
 
 }
@@ -177,7 +177,12 @@ func irc_loop(settings *ServerConfig) {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
 				words_len := len(words)
-
+				if len(words) > 1 && words[1] != "PRIVMSG" {
+					select {
+					case InteractQueue <- fmt.Sprintf("[>%s] %s\n", settings.Name, response):
+					default:
+					}
+				}
 				fmt.Printf(">%v\n", response)
 
 				if !auth_sent && strings.HasSuffix(response, "ACK :sasl") {
@@ -214,15 +219,17 @@ func irc_loop(settings *ServerConfig) {
 							Connections[settings.Name] = conn
 							ConnectionsMutex.Unlock()
 							log.Println("!PONG!")
+						} else {
+							log.Println("PONG FAILURE")
 						}
 					} else if words[1] == "433" && len(settings.Nick) < 32 {
-                            if strings.HasSuffix(settings.Nick,"_") && len(settings.Nick)>16 {
-                            	settings.Nick = "_"+settings.Nick
-                            } else {
-                            	settings.Nick = settings.Nick +"_"
-                            }
-						    send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
-  					} else if words[1] == "PRIVMSG" && words_len >= 3 {
+						if strings.HasSuffix(settings.Nick, "_") && len(settings.Nick) > 16 {
+							settings.Nick = "_" + settings.Nick
+						} else {
+							settings.Nick = settings.Nick + "_"
+						}
+						send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))
+					} else if words[1] == "PRIVMSG" && words_len >= 3 {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
 						user := strings.TrimLeft(words[0], ":")
@@ -242,7 +249,12 @@ func irc_loop(settings *ServerConfig) {
 							if strings.EqualFold(ch.Name, words[2]) {
 								channel = ch
 								from_channel = ch.Name
-								log.Printf("[%s/%s] %s\n", settings.Host, ch.Name, query)
+								privmsg := fmt.Sprintf("[>][%s/%s] <%s> %s\n", settings.Host, ch.Name, user, query)
+								select {
+								case InteractQueue <- privmsg:
+								default:
+								}
+								log.Print(privmsg)
 								llm = ch.LLM
 								if len(ch.Backlog) > 10 {
 									ch.Backlog = ch.Backlog[1:]
@@ -255,6 +267,7 @@ func irc_loop(settings *ServerConfig) {
 							mention := mentioned(settings.Nick, query)
 							if mention {
 								/* Skuzzy mentioned, process the command. */
+								log.Printf("Mentioned!\n")
 								nickPattern := `(?i)^` + regexp.QuoteMeta(settings.Nick) + `[:, ]*`
 								r, _ := regexp.Compile(nickPattern)
 								cleanQuery := r.ReplaceAllString(query, "")
@@ -316,13 +329,13 @@ func irc_loop(settings *ServerConfig) {
 										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
 										reload = true
 									}
-									                                    _, text := FindPrompt(settings, llm, from_channel, cleanQuery)
-									                                    text = strings.Replace(text, "{NICK}", settings.Nick, -1)
-									                                    text = strings.Replace(text, "{USER}", user, -1)
-									                                    text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
-									                                    text = strings.Replace(text, "{VERSION}", "2.0", -1)
-									                                    text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
-																		req := DeepseekRequest{
+									prompt, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
+									text = strings.Replace(text, "{USER}", user, -1)
+									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
+									text = strings.Replace(text, "{VERSION}", "2.0", -1)
+									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
+									req := DeepseekRequest{
 										channel:       from_channel,
 										Server:        settings.Name,
 										sysprompt:     text,
@@ -333,21 +346,21 @@ func irc_loop(settings *ServerConfig) {
 										User:          user,
 									}
 									DeepseekQueue <- req
-									log.Printf("Deepseek query:\n%v\n", req)
+									log.Printf("Deepseek query [%s]:\n%v\n", prompt, req)
 								}
 							} else {
 								prompt, _ := FindPrompt(settings, llm, from_channel, query)
-								if strings.HasSuffix(prompt, "/default") {
+								if len(prompt) == 0 || strings.HasSuffix(prompt, "/default") {
 									log.Printf("Skipping LLM query due to default prompt and no mention.")
 								} else {
-									_, text := FindPrompt(settings, llm, from_channel, query)
+									prompt, text := FindPrompt(settings, llm, from_channel, query)
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
 									text = strings.Replace(text, "{VERSION}", "2.0", -1)
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
-																		req := DeepseekRequest{
+									req := DeepseekRequest{
 										channel:       from_channel,
 										Server:        settings.Name,
 										sysprompt:     text,
@@ -358,7 +371,7 @@ func irc_loop(settings *ServerConfig) {
 										User:          user,
 									}
 									DeepseekQueue <- req
-									log.Printf("Deepseek query:\n%v\n", req)
+									log.Printf("Deepseek query [%s]:\n%v\n", prompt, req)
 								}
 							}
 						}
