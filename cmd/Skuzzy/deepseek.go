@@ -18,7 +18,7 @@ var SysPrompts = make(map[string]string)
 var SysPromptsMutex = sync.RWMutex{}
 
 type DeepseekRequest struct {
-	channel       string
+	Channel       string
 	Server        string
 	sysprompt     string
 	request       string
@@ -80,9 +80,13 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 				Result      string
 				OriginalReq DeepseekRequest
 			}{Result: deepseek_response, OriginalReq: req}
+		} else if strings.EqualFold(req.OriginalQuery, "regex\nchallenge") {
+			log.Printf("Regex challenge response:%s\n", deepseek_response)
+			go NewRegexChallenge(req, deepseek_response)
+
 		} else {
 			log.Printf("Deepseek response:%s\n", deepseek_response)
-			send_irc(settings.Name, req.channel, deepseek_response)
+			send_irc(settings.Name, req.Channel, deepseek_response)
 		}
 	}
 }
@@ -90,19 +94,32 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {
 	prefix := settings.Name + "/" + from_channel
 	SysPromptsMutex.RLock()
+	prompt := ""
+	text := ""
 	defer SysPromptsMutex.RUnlock()
 	for key, value := range SysPrompts {
 		if strings.HasPrefix(key, prefix) {
+			log.Printf(">P>%s\n", key)
 			if strings.HasSuffix(key, "/greet") && rGreet.MatchString(query) {
-				log.Printf("Found greeting prompt %s for query:%s\n", key, query)
-				return key, value
+				log.Printf("[FindPromptDeepseek] Found greeting prompt %s for query:%s\n", key, query)
+				prompt = key
+				text = value
+				break
+			} else if strings.HasSuffix(key, "/regex_challenge") && query == "regex\nchallenge" {
+				log.Printf("[FindPromptDeepseek] Found regex challenge prompt\n")
+				prompt = key
+				text = value
+				break
 			} else if strings.HasSuffix(key, "/default") {
-				log.Printf("Defaulting to prompt %s for query:%s\n", key, query)
-				return key, value
+				log.Printf("[FindPromptDeepseek] Defaulting to prompt %s for query:%s\n", key, query)
+				prompt = key
+				text = value
+
 			}
 		}
 	}
-	return "", ""
+
+	return prompt, text
 }
 
 func LoadSysPrompts(settings *ServerConfig) {
@@ -119,6 +136,11 @@ func LoadSysPrompts(settings *ServerConfig) {
 				if strings.EqualFold(promptName, k) {
 					SysPrompts[settings.Name+"/"+channel.Name+"/"+promptName] = text
 					log.Printf("Loaded Prompt '%s/%s/%s' -> Prompt: %s\n", settings.Name, channel.Name, promptName, text)
+					if strings.EqualFold(promptName, "regex_challenge") {
+						RegexChallengeMutex.Lock()
+						RegexChallengeChannels[settings.Name+"/"+channel.Name] = RegexChallenge{settings, channel.Name, 0, regexp.MustCompile("^\n\n$")}
+						RegexChallengeMutex.Unlock()
+					}
 				}
 			}
 		}

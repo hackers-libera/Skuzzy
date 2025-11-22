@@ -23,6 +23,7 @@ func setupLogging(settings *ServerConfig) {
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 
 	log.SetOutput(multiWriter)
+	log.Println("Logging started for:" + settings.Name)
 }
 
 func ServerRun(settings *ServerConfig) {
@@ -53,7 +54,7 @@ func server(configuration string) {
 	}
 	go ReminderHandler(settings) /* Start reminder handler goroutine for this server. */
 	setupLogging(settings)
-	log.Printf("Loaded settings for %v:\n%v\n", settings.Name, settings)
+	log.Printf("Loaded settings for %v\n", settings.Name)
 	for {
 		ServerRun(settings)
 		time.Sleep(5 * time.Second)
@@ -73,7 +74,7 @@ func main() {
 
 	}
 	log.Printf("Started server go routines\n")
-
+	go RegexChallengeWorker()
 	// Sleep forever, exit when instructed or ctrl+c
 	defer CloseConnections() /* Ensure connections are closed on exit. */
 	for {

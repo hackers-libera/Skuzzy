@@ -18,7 +18,7 @@ channels:
   - hackers:
     name: '#hackers'
     llm: deepseek
-    sys_prompts_enabled: [default,greet]
+    sys_prompts_enabled: [default,greet,regex_challenge]
   - malware:
     name: '##malware'
     llm: deepseek
@@ -26,7 +26,7 @@ channels:
   - testchan:
     name: '#skuzzy'
     llm: deepseek
-    sys_prompts_enabled: [default,greet]   
+    sys_prompts_enabled: [default,greet,regex_challenge]   
   - bettola:
     name: '#bettola'
     llm: deepseek
@@ -59,3 +59,4 @@ sys_prompts:
     Example Request: "Reminder ID: 12, get food in 2 hours"
     Example response: {"reminder_id": 12, "new_duration_minutes": 120,
     "new_reminder_message": "get food"}
+  regex_challenge: Respond with an regular expression. The regular expression should challenge human contestants. Difficultly level should be 5 on a scale of 0-10. The regular expression should not be longer than 120 characters. The regular expression should be compatible with Golang's regexp module. Do not use Perl syntax regex. Your response should be the regular expression and nothing more. Do not add descriptions, commentary or any other content other than the regular expression string. Your response must always begin and end with a /

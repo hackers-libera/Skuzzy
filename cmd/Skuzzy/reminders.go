@@ -69,7 +69,7 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) {
 		/* Send the reminder_fire prompt. */
 		req := DeepseekRequest{
 			Server:    reminder.Server,
-			channel:   reminder.Channel,
+			Channel:   reminder.Channel,
 			request:   "The reminder is now due. Please generate the notification.",
 			sysprompt: sysPrompt,
 		}
@@ -208,7 +208,7 @@ func ChangeReminder(settings *ServerConfig, user string, id int, newMessage stri
 						reminderPrompt := fmt.Sprintf(settings.SysPrompts["reminder_fire"],
 							r.User, r.Message)
 						req := DeepseekRequest{
-							channel:   r.Channel,
+							Channel:   r.Channel,
 							request:   reminderPrompt,
 							sysprompt: settings.SysPrompts["reminder_fire"],
 						}

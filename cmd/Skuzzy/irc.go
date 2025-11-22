@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	"io"
+	//"io"
 	"log"
 	"net"
 	"regexp"
@@ -162,14 +162,14 @@ func irc_loop(settings *ServerConfig) {
 		nbytes, err := cx.Read(buf)
 		if err != nil {
 			log.Printf("[%v] Error receiving data from %s:%v\n", settings.Name, settings.Host, err)
-			if err == io.EOF {
-				break
-			}
+
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				log.Printf("[%s] Read timeout, sending PING to server.", settings.Name)
 				send_irc_raw(Connections[settings.Name], fmt.Sprintf("PING %s\r\n", settings.Host))
 				cx.SetReadDeadline(time.Now().Add(240 * time.Second))
 				continue
+			} else {
+				break
 			}
 		} else if nbytes > 0 {
 			cx.SetReadDeadline(time.Now().Add(240 * time.Second))
@@ -241,6 +241,7 @@ func irc_loop(settings *ServerConfig) {
 						}
 
 						user = strings.Split(user, "!")[0]
+
 						llm := ""
 						var channel *ChannelConfig
 
@@ -263,6 +264,7 @@ func irc_loop(settings *ServerConfig) {
 								break
 							}
 						}
+						go CheckRegexChallenge(settings.Name, from_channel, user, query)
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
 							if mention {
@@ -295,7 +297,7 @@ func irc_loop(settings *ServerConfig) {
 										newDetails := matches[3]
 										if err == nil {
 											req := DeepseekRequest{
-												channel:       from_channel,
+												Channel:       from_channel,
 												Server:        settings.Name,
 												request:       fmt.Sprintf("Reminder ID: %d, Details: %s", id, newDetails),
 												PromptName:    "reminder_change_parse",
@@ -309,7 +311,7 @@ func irc_loop(settings *ServerConfig) {
 									}
 								} else if rReminder.MatchString(cleanQuery) {
 									req := DeepseekRequest{
-										channel:       from_channel,
+										Channel:       from_channel,
 										request:       cleanQuery,
 										PromptName:    "reminder_parse",
 										OriginalQuery: cleanQuery,
@@ -336,7 +338,7 @@ func irc_loop(settings *ServerConfig) {
 									text = strings.Replace(text, "{VERSION}", "2.0", -1)
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 									req := DeepseekRequest{
-										channel:       from_channel,
+										Channel:       from_channel,
 										Server:        settings.Name,
 										sysprompt:     text,
 										request:       cleanQuery,
@@ -361,7 +363,7 @@ func irc_loop(settings *ServerConfig) {
 									text = strings.Replace(text, "{BACKLOG}", strings.Join(channel.Backlog, "\n"), -1)
 
 									req := DeepseekRequest{
-										channel:       from_channel,
+										Channel:       from_channel,
 										Server:        settings.Name,
 										sysprompt:     text,
 										request:       query,
