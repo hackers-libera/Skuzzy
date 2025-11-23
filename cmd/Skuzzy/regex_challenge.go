@@ -22,13 +22,13 @@ var RegexChallengeMutex = sync.RWMutex{}
 var RegexChallengeChannels = make(map[string]RegexChallenge)
 
 func RegexChallengeWorker() {
-	time.Sleep(30 * time.Second)
+	time.Sleep(30 * time.Second) // Initial sleep while things get set up
 	for {
 		RegexChallengeMutex.Lock()
 		for k, v := range RegexChallengeChannels {
 			log.Printf("[RegexChallengeWorker] Processing RegexChallenge for %s\n", k)
 			prompt, text := FindPrompt(v.settings, "deepseek", v.Channel, "regex\nchallenge")
-			if strings.HasSuffix(prompt, "/regex_challenge") && (v.Timer == 0 || ((time.Now().Unix() - v.Timer) > (60 * 45))) {
+			if strings.HasSuffix(prompt, "/regex_challenge") { // && (v.Timer == 0 || ((time.Now().Unix() - v.Timer) > (3600*2))) {
 				v.Timer = time.Now().Unix()
 				req := DeepseekRequest{
 					Channel:       v.Channel,
@@ -41,13 +41,13 @@ func RegexChallengeWorker() {
 					User:          "",
 				}
 				DeepseekQueue <- req
-				log.Printf("[RegexChallengeWorker] New challeng request queued")
+				log.Printf("[RegexChallengeWorker] New challenge request queued")
 			} else {
 				log.Printf("[RegexChallengeWorker] Bad prompt or timer not ready. Prompt:%s,Timer:%d\n", prompt, v.Timer)
 			}
 		}
 		RegexChallengeMutex.Unlock()
-		sleep_time := time.Duration(rand.Intn(3600))
+		sleep_time := time.Duration((3600 * 2) + rand.Intn(3600*6))
 		time.Sleep(sleep_time * time.Second)
 
 	}
@@ -90,7 +90,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 	defer RegexChallengeMutex.Unlock()
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if challenge.Regex.MatchString(query) {
-			send_irc(server, channel, fmt.Sprintf("Regex chaallenge solved! Congrats %s! ", user))
+			send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! ", user))
 			_, text := FindPrompt(challenge.settings, "deepseek", channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
 			req := DeepseekRequest{
@@ -105,6 +105,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			}
 			DeepseekQueue <- req
 			log.Printf("[CheckRegexChallenge] New challenge request queued because the previous one was solved.\n")
+
 		} else {
 			log.Printf("[CheckRegexChallenge] Non-matching regex:%s\n", query)
 		}
