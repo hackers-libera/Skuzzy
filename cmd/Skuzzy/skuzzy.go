@@ -63,6 +63,10 @@ func server(configuration string) {
 
 func main() {
 
+	if err := InitDB("skuzzy.db"); err != nil {
+		log.Fatalf("Failed to initialise database: %v", err)
+	}
+
 	for i, v := range os.Args {
 		if i > 0 {
 			if strings.HasSuffix(v, ".sock") {

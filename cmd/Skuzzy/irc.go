@@ -118,6 +118,7 @@ var rReminder = regexp.MustCompile(`(?i)remind|reminder`)
 var rListReminders = regexp.MustCompile(`(?i)(list|my) reminders`)
 var rDeleteReminder = regexp.MustCompile(`(?i)(delete|remove) reminder (\d+)`)
 var rChangeReminder = regexp.MustCompile(`(?i)(change|update) reminder (?:id )?(\d+)(?:[.:, ])?(.+)`)
+var rRemember = regexp.MustCompile(`(?i)!remember (.+)`) /* Explicit mem storage. */
 
 func Ping(settings *ServerConfig) {
 	timeout := int64(499)
@@ -272,6 +273,22 @@ func irc_loop(settings *ServerConfig) {
 							if mention {
 								/* Skuzzy mentioned, process the command. */
 								log.Printf("Mentioned!\n")
+
+								/* Handle explicit !remember command. */
+								if matches := rRemember.FindStringSubmatch(query); len(matches) > 1 {
+									if err := AddMemory(matches[1]); err != nil {
+										log.Printf("Failed to add explicit memory: %v", err)
+									}
+									send_irc(settings.Name, from_channel, fmt.Sprintf("%s: Okay, I will " +
+										"remember that: \"%s\"", user, matches[1]))
+									return /* Don't process as regular LLM query. */
+								}
+
+								/* If bot mentioned and not !remember, add the query to memory. */
+								if err := AddMemory(query); err != nil {
+									log.Printf("Failed to add mentioned query to memory: %v", err)
+								}
+
 								nickPattern := `(?i)^` + regexp.QuoteMeta(settings.Nick) + `[:, ]*`
 								r, _ := regexp.Compile(nickPattern)
 								cleanQuery := r.ReplaceAllString(query, "")
@@ -320,7 +337,7 @@ func irc_loop(settings *ServerConfig) {
 										User:          user,
 									}
 									DeepseekQueue <- req
-									log.Printf("Deepseek reminder parsing query:\n%v\n", req)
+									log.Printf("deepseek reminder parsing query:\n%v\n", req)
 								} else {
 									/* Handle other commands like @reset, @reload, or default chat. */
 									reload := false
@@ -333,7 +350,21 @@ func irc_loop(settings *ServerConfig) {
 										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
 										reload = true
 									}
+
+									/* Get the base prompt and text. */
 									prompt, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+
+									/* Search memories and add to prompt. */
+									memoryContext := ""
+									var searchErr error
+									if memoryContext, searchErr = SearchMemories(cleanQuery,
+										5); searchErr != nil { /* Top 5 memories. */
+										log.Printf("Error searching memories: %v", searchErr)
+										memoryContext = "" /* Ensure it's empty on error. */
+									}
+
+									if memoryContext != "" {text=memoryContext+"\n"+text}
+
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
@@ -342,7 +373,7 @@ func irc_loop(settings *ServerConfig) {
 									req := DeepseekRequest{
 										Channel:       from_channel,
 										Server:        settings.Name,
-										sysprompt:     text,
+										sysprompt:     text, /* memoryContext prepended to 'text'. */
 										request:       cleanQuery,
 										reload:        reload,
 										reset:         reset,
@@ -357,7 +388,20 @@ func irc_loop(settings *ServerConfig) {
 								if len(prompt) == 0 || strings.HasSuffix(prompt, "/default") {
 									log.Printf("Skipping LLM query due to default prompt and no mention.")
 								} else {
+									/* Get base prompt and text. */
 									prompt, text := FindPrompt(settings, llm, from_channel, query)
+
+									/* Search memories and add to prompt. */
+									memoryContext := ""
+									var searchErr error
+									if memoryContext, searchErr = SearchMemories(query,
+										5); searchErr != nil { /* Top 5 memories. */
+										log.Printf("Error searching memories: %v", searchErr)
+										memoryContext = "" /* ensure it's empty on error. */
+									}
+
+									if memoryContext != "" {text=memoryContext+"\n"+text}
+
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
@@ -367,7 +411,7 @@ func irc_loop(settings *ServerConfig) {
 									req := DeepseekRequest{
 										Channel:       from_channel,
 										Server:        settings.Name,
-										sysprompt:     text,
+										sysprompt:     text, /* memoryContext prepended to 'text'. */
 										request:       query,
 										reload:        false,
 										reset:         false,
