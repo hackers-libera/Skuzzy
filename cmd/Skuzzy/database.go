@@ -38,6 +38,47 @@ func InitDB(filepath string) error {
 		return fmt.Errorf("Failed to create memories table: %w", err)
 	}
 
+	/* Create FTS5 virtual table for full-text search. */
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+		text,
+		content='memories',
+		content_rowid='id'
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("Failed to create FTS table: %w", err)
+	}
+
+	/* Triggers to keep FTS table in sync with memories table. */
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+		INSERT INTO memories_fts(rowid, text) VALUES (new.id, new.text);
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("Failed to create insert trigger: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+		INSERT INTO memories_fts(memories_fts, rowid, text) VALUES('delete', old.id, old.text);
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("Failed to create delete trigger: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+		INSERT INTO memories_fts(memories_fts, rowid, text) VALUES('delete', old.id, old.text);
+		INSERT INTO memories_fts(rowid, text) VALUES (new.id, new.text);
+		END;
+	`)
+	if err != nil {
+		return fmt.Errorf("Failed to create update trigger: %w", err)
+	}
+
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS regex_challenge_scores (
 		user TEXT PRIMARY KEY,
@@ -80,18 +121,11 @@ func SearchMemories(query string, topN int) (string, error) {
 		return "", nil /* No keywrods to search for. */
 	}
 
-	var whereClauses []string
-	var args []interface{}
-	for _, keyword := range keywords {
-		whereClauses = append(whereClauses, "text LIKE ?")
-		args = append(args, "%"+keyword+"%")
-	}
+	/* Use FTS5 for searching. */
+	ftsQuery := strings.Join(keywords, " OR ")
+	queryStr := "SELECT text FROM memories_fts WHERE memories_FTS MATCH ? ORDER BY rank LIMIT ?"
 
-	queryStr := "SELECT text FROM memories WHERE " + strings.Join(whereClauses,
-		" OR ") + " ORDER BY created_at DESC LIMIT ?"
-	args = append(args, topN)
-
-	rows, err:= DB.Query(queryStr, args...)
+	rows, err := DB.Query(queryStr, ftsQuery, topN)
 	if err != nil {
 		return "", fmt.Errorf("Failed to search memories: %w", err)
 	}
