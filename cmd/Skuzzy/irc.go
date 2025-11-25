@@ -264,9 +264,9 @@ func irc_loop(settings *ServerConfig) {
 								break
 							}
 						}
-						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
-							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
-						}
+						if strings.HasPrefix(query,`"`) && strings.HasSuffix(query,`"`) {
+						go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query,`"`))
+					}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
 							if mention {

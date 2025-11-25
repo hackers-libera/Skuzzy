@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"regexp"
+	regexp "github.com/ando-masaki/go-pcre"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +47,7 @@ func RegexChallengeWorker() {
 			}
 		}
 		RegexChallengeMutex.Unlock()
-		sleep_time := time.Duration((3600 * 2) + rand.Intn(3600*6))
+		sleep_time := time.Duration((3600*2)+rand.Intn(3600*6))
 		time.Sleep(sleep_time * time.Second)
 
 	}
@@ -58,9 +58,8 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 	defer RegexChallengeMutex.Unlock()
 	if challenge, ok := RegexChallengeChannels[req.Server+"/"+req.Channel]; ok {
 		rex := strings.TrimRight(strings.TrimLeft(strings.TrimSpace(response), `/`), `/`)
-		rex = strings.Replace(rex, `(?=`, `(`, -1)
 		newRegex, err := regexp.Compile(rex)
-		if err != nil {
+		if err != nil || len(rex) > 380 {
 			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n%v\n", response, err)
 			_, text := FindPrompt(challenge.settings, "deepseek", req.Channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
