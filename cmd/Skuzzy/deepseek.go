@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ando-masaki/go-pcre"
 	deepseek "github.com/cohesion-org/deepseek-go"
 	"io"
 	"log"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"sync" /* For RWMutex. */
 	"time"
-    "github.com/ando-masaki/go-pcre"
 )
 
 var rGreet, _ = regexp.Compile(`(?i)(hi+$|howdy$|hello$|hey+$|hai+$|ahoy|greetings$)[\. ]*`)
@@ -139,7 +139,7 @@ func LoadSysPrompts(settings *ServerConfig) {
 					log.Printf("Loaded Prompt '%s/%s/%s' -> Prompt: %s\n", settings.Name, channel.Name, promptName, text)
 					if strings.EqualFold(promptName, "regex_challenge") {
 						RegexChallengeMutex.Lock()
-						RegexChallengeChannels[settings.Name+"/"+channel.Name] = RegexChallenge{settings, channel.Name, 0, pcre.MustCompile("^\n\n$")}
+						RegexChallengeChannels[settings.Name+"/"+channel.Name] = RegexChallenge{settings, channel.Name, time.Now().Unix(), pcre.MustCompile("^\n\n$")}
 						RegexChallengeMutex.Unlock()
 					}
 				}

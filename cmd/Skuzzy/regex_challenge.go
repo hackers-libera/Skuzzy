@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	regexp "github.com/ando-masaki/go-pcre"
 	"log"
 	"math/rand"
-	regexp "github.com/ando-masaki/go-pcre"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,8 @@ type RegexChallenge struct {
 var RegexChallengeMutex = sync.RWMutex{}
 
 var RegexChallengeChannels = make(map[string]RegexChallenge)
+
+var maxSleep = (3600 * 6)
 
 func RegexChallengeWorker() {
 	time.Sleep(30 * time.Second) // Initial sleep while things get set up
@@ -47,7 +50,7 @@ func RegexChallengeWorker() {
 			}
 		}
 		RegexChallengeMutex.Unlock()
-		sleep_time := time.Duration((3600*2)+rand.Intn(3600*6))
+		sleep_time := time.Duration((3600 * 2) + rand.Intn(maxSleep))
 		time.Sleep(sleep_time * time.Second)
 
 	}
@@ -87,9 +90,31 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 func CheckRegexChallenge(server string, channel string, user string, query string) {
 	RegexChallengeMutex.Lock()
 	defer RegexChallengeMutex.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("[CheckRegexChallenge] Recovered from panic:", r)
+		}
+	}()
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
+		if strings.Contains(query, ">") {
+			query_s := strings.Split(query, ">")
+			if len(query_s) > 1 {
+				query = strings.TrimSpace(query_s[1])
+				log.Println("New query after bridge user removal:" + query)
+			}
+		}
 		if challenge.Regex.MatchString(query) {
-			send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! ", user))
+			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
+			points := maxSleep - int(int(time.Now().Unix())-int(challenge.Timer))
+			RegexSolved(server, channel, user, points)
+			regex_scores := RegexScores(server, channel, 86400*30)
+
+			if score, ok := regex_scores[strings.ToLower(user)]; ok {
+
+				send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! Your new score is: %d (+%d)", user, score, points))
+			} else {
+				log.Printf("[CheckRegexChallenge] Warning, updated user score but updated score was not found!!\n")
+			}
 			_, text := FindPrompt(challenge.settings, "deepseek", channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
 			req := DeepseekRequest{
@@ -109,4 +134,39 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			log.Printf("[CheckRegexChallenge] Non-matching regex:%s\n", query)
 		}
 	}
+}
+
+type KV struct {
+	K string
+	V int
+}
+
+func SendRegexScores(Server string, Channel string) {
+	regex_scores := RegexScores(Server, Channel, 86400*30)
+	response := "Top 10 Regex Scores for the past 30 days: "
+	var scores_slice []KV
+	for user, score := range regex_scores {
+		scores_slice = append(scores_slice, KV{user, score})
+	}
+	sort.Slice(scores_slice, func(i, j int) bool {
+		return scores_slice[i].V > scores_slice[j].V
+	})
+	if len(scores_slice) > 10 {
+		scores_slice = scores_slice[:10]
+	}
+	for i, scores := range scores_slice {
+		response = fmt.Sprintf("%s | %s (%d): %d  |", response, scores.K, i+1, scores.V)
+	}
+	send_irc(Server, Channel, response)
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#%&-_<> =,"
+
+func generateRandomString(length int) string {
+	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
 }

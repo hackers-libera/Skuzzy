@@ -235,7 +235,7 @@ func irc_loop(settings *ServerConfig) {
 						user := strings.TrimLeft(words[0], ":")
 
 						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
-						r, _ := regexp.Compile(`^<.*?> `)
+						r, _ := regexp.Compile(`^<.+> `)
 						if r.MatchString(query) {
 							query = r.ReplaceAllString(query, "")
 						}
@@ -264,9 +264,12 @@ func irc_loop(settings *ServerConfig) {
 								break
 							}
 						}
-						if strings.HasPrefix(query,`"`) && strings.HasSuffix(query,`"`) {
-						go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query,`"`))
-					}
+						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
+							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
+						}
+						if strings.EqualFold(query, "regex scores") {
+							SendRegexScores(settings.Name, from_channel)
+						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
 							if mention {

@@ -9,21 +9,21 @@ import (
 	"time"
 )
 
-func setupLogging(settings *ServerConfig) {
-	logPath, err := filepath.Abs(settings.ServerLogFile)
+func setupLogging(LogFile string) {
+	logPath, err := filepath.Abs(LogFile)
 	if err != nil {
-		log.Fatalf("Failed to open server log file for %s, absolute path resolution failed: %v", settings.Name, err)
+		log.Fatalf("Failed to open global log file; absolute path resolution failed: %v", err)
 	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
-		log.Fatalf("Failed to open server log file for %s: %v", settings.Name, err)
+		log.Fatalf("Failed to open global log file: %v", err)
 	}
 	defer logFile.Close()
 
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
 
 	log.SetOutput(multiWriter)
-	log.Println("Logging started for:" + settings.Name)
+	log.Println("Logging started")
 }
 
 func ServerRun(settings *ServerConfig) {
@@ -53,7 +53,6 @@ func server(configuration string) {
 		return
 	}
 	go ReminderHandler(settings) /* Start reminder handler goroutine for this server. */
-	setupLogging(settings)
 	log.Printf("Loaded settings for %v\n", settings.Name)
 	for {
 		ServerRun(settings)
@@ -62,18 +61,35 @@ func server(configuration string) {
 }
 
 func main() {
-
+	log.Println("[Main] Starting up.")
+	
+	var servers []string
+	db_path := "skuzzy.db"
 	for i, v := range os.Args {
 		if i > 0 {
 			if strings.HasSuffix(v, ".sock") {
 				go interact(v) // Keyboard interaction with the bot operator
 				continue
 			}
-			go server(v)
+			if strings.HasSuffix(v, ".log") {
+				setupLogging(v)
+				continue
+			}
+			if strings.HasSuffix(v, ".db") {
+				db_path = v
+				continue
+			}
+			servers = append(servers, v)
 		}
 
 	}
-	log.Printf("Started server go routines\n")
+	if err := InitDB(db_path); err != nil {
+		log.Fatalf("[Main] Failed to initialize database: %v", err)
+	}
+	for _, s := range servers {
+		go server(s)
+	}
+	log.Printf("[Main] Started server go routines\n")
 	go RegexChallengeWorker()
 	// Sleep forever, exit when instructed or ctrl+c
 	defer CloseConnections() /* Ensure connections are closed on exit. */
