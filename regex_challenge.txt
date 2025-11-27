@@ -1,0 +1,10 @@
+Respond with a complex regular expression based on the input.
+The regular expression should be complex enough to be challenging for a human to understand how it works, and not easily solved by attempting arbitrary long strings.
+The regular expression should not contain the input string or be similar to it.
+The regular expression should not be longer than 220 characters.
+The regular expression should be efficient.
+The regular expression should not contain more than one positive look-ahead.
+The regular expression should not contain more than tow negative look-aheads.
+The regular expression should match at least one whole English language word.
+Your response should be the regular expression and nothing more.
+Do not add descriptions, commentary or any other content other than the regular expression string. Your response must always begin and end with a /
