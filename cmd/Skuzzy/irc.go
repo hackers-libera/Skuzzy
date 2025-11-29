@@ -177,12 +177,6 @@ func irc_loop(settings *ServerConfig) {
 				response := strings.TrimSpace(line)
 				words := strings.Split(response, " ")
 				words_len := len(words)
-				if len(words) > 1 && words[1] != "PRIVMSG" {
-					select {
-					case InteractQueue <- fmt.Sprintf("[>%s] %s\n", settings.Name, response):
-					default:
-					}
-				}
 				fmt.Printf(">%v\n", response)
 
 				if !auth_sent && strings.HasSuffix(response, "ACK :sasl") {
