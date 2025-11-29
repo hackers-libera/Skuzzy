@@ -48,6 +48,21 @@ func InitDB(filepath string) error {
 		return fmt.Errorf("Failed to create ctf_scores table: %w", err)
 	}
 
+	/* Reminders. */
+	_, err = db.Exec(`
+          CREATE TABLE IF NOT EXISTS reminders (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+            server TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            user TEXT NOT NULL,
+            message TEXT NOT NULL,
+            end_time INTEGER NOT NULL
+            );
+          `)
+	if err != nil {
+		return fmt.Errorf("Failed to create reminders table: %w", err)
+	}
+
 	DB = db
 	log.Println("Database init success.")
 	return nil

@@ -317,6 +317,7 @@ func irc_loop(settings *ServerConfig) {
 								} else if rReminder.MatchString(cleanQuery) {
 									req := DeepseekRequest{
 										Channel:       from_channel,
+										Server:        settings.Name,
 										request:       cleanQuery,
 										PromptName:    "reminder_parse",
 										OriginalQuery: cleanQuery,
