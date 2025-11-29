@@ -45,6 +45,14 @@ func send_irc(server string, channel string, message string) {
 
 	message = sanitizer.Replace(message)
 
+	ConnectionsMutex.RLock()
+	conn, ok := Connections[server]
+	ConnectionsMutex.RUnlock()
+	if !ok || conn.cx == nil {
+		log.Printf("Error: no valid IRC connection found for '%s'. Message not sent: %s", server, message)
+		return /* If no valid connection. Exit. */
+	}
+
 	msg := ""
 	if channel != "" {
 		msg = fmt.Sprintf("PRIVMSG %v :%s\r\n", channel, message)
@@ -53,7 +61,7 @@ func send_irc(server string, channel string, message string) {
 		msg = fmt.Sprintf("%s\r\n", message)
 	}
 
-	send_irc_raw(Connections[server], msg)
+	send_irc_raw(conn, msg)
 
 	if remaining_message != "" {
 		send_irc(server, channel, remaining_message)
@@ -61,8 +69,6 @@ func send_irc(server string, channel string, message string) {
 }
 
 func send_irc_raw(conn Connection, msg string) {
-	ConnectionsMutex.RLock()
-	defer ConnectionsMutex.RUnlock()
 	_, err := conn.cx.Write([]byte(msg))
 	if err != nil {
 		log.Printf("Failed to send IRC message:%v\nError:%v\n", msg, err)
