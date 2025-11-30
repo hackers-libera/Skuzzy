@@ -12,6 +12,14 @@ import (
 
 var DB *sql.DB
 
+var stopWords = map[string]struct{}{
+	"a": {}, "about": {}, "an": {}, "and": {}, "are": {}, "as": {}, "at": {}, "be": {},
+	"by": {}, "for": {}, "from": {}, "how": {}, "i": {}, "in": {}, "is": {}, "it": {},
+	"of": {}, "on": {}, "or": {}, "that": {}, "the": {}, "this": {}, "to": {},
+	"was": {}, "what": {}, "when": {}, "where": {}, "who": {}, "will": {}, "with": {},
+	"my": {}, "it's": {}, "you": {}, "your": {},
+}
+
 /* Initialise the database and creates tables if they don't exist. */
 func InitDB(filepath string) error {
 	db, err := sql.Open("sqlite3", filepath)
@@ -46,21 +54,6 @@ func InitDB(filepath string) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("Failed to create ctf_scores table: %w", err)
-	}
-
-	/* Reminders. */
-	_, err = db.Exec(`
-          CREATE TABLE IF NOT EXISTS reminders (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-            server TEXT NOT NULL,
-            channel TEXT NOT NULL,
-            user TEXT NOT NULL,
-            message TEXT NOT NULL,
-            end_time INTEGER NOT NULL
-            );
-          `)
-	if err != nil {
-		return fmt.Errorf("Failed to create reminders table: %w", err)
 	}
 
 	DB = db
@@ -138,4 +131,76 @@ func RegexScores(server string, channel string, oldest int) map[string]int {
 	}
 
 	return scores
+}
+
+func RegexLastAttempt(server string, channel string, user string) int {
+	last_attempt := 0
+	channel = strings.ToLower(channel)
+	user = strings.ToLower(user)
+	err := DB.QueryRow("SELECT  last_attempt FROM regex_challenge_scores WHERE server = ? AND channel = ? AND user = ?", server, channel, user).Scan(&last_attempt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[RegexLastAttempt] No rows in the regex challenge last attempt table")
+			return last_attempt
+		} else {
+			log.Printf("[RegexLastAttempt] Warning, unexpected error when searching for last attempt:%v\n", err)
+			return last_attempt
+		}
+	}
+
+	return last_attempt
+}
+
+/* Stores a text string in the database. */
+func AddMemory(text string) error {
+	_, err := DB.Exec("INSERT OR IGNORE INTO memories (text) VALUES (?)", text)
+	if err != nil {
+		return fmt.Errorf("Failed to insert memory: %w", err)
+	}
+
+	log.Printf("Adding memory: %s", text)
+	return nil
+}
+
+/* Finds the top N memories matching keywords from the query. */
+func SearchMemories(query string, topN int) (string, error) {
+	/* Split by space and use non-empty, non-stop-word strings. */
+	rawKeywords := strings.Fields(strings.ToLower(query))
+	var keywords []string
+	for _, word := range rawKeywords {
+		/* Remove punctuation from word. */
+		word = strings.Trim(word, ".,!?;:")
+		if _, isStopWord := stopWords[word]; !isStopWord && len(word) > 1 {
+			keywords = append(keywords, word)
+		}
+	}
+	if len(keywords) == 0 {
+		return "", nil /* No keywrods to search for. */
+	}
+
+	/* Use FTS5 for searching. */
+	ftsQuery := strings.Join(keywords, " OR ")
+	queryStr := "SELECT text FROM memories_fts WHERE memories_FTS MATCH ? ORDER BY rank LIMIT ?"
+
+	rows, err := DB.Query(queryStr, ftsQuery, topN)
+	if err != nil {
+		return "", fmt.Errorf("Failed to search memories: %w", err)
+	}
+	defer rows.Close()
+
+	var memories []string
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			log.Printf("Failed to scan memory row: %v", err)
+			continue
+		}
+		memories = append(memories, text)
+	}
+
+	if len(memories) == 0 {
+		return "", nil /* No memories found. */
+	}
+
+	return "Here is some relevant context from my memory:\n- " + strings.Join(memories, "\n- "), nil
 }

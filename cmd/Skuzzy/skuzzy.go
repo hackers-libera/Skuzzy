@@ -37,6 +37,11 @@ func ServerRun(settings *ServerConfig) {
 
 	LoadSysPrompts(settings)
 
+	err = LoadReminders(settings)
+	if err != nil {
+		log.Printf("Error loading reminders for %s: %v", settings.Name, err)
+	}
+
 	for _, llm := range settings.LLMS {
 		if strings.EqualFold(llm.Type, "deepseek") {
 			log.Printf("Starting LLM go routine for %s\n", llm.Name)
