@@ -270,6 +270,9 @@ func irc_loop(settings *ServerConfig) {
 						if strings.EqualFold(query, "regex scores") {
 							SendRegexScores(settings.Name, from_channel)
 						}
+						if strings.EqualFold(query,"next regex") {
+							NextRegexChallenge(settings.Name,from_channel,user)
+						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
 							if mention {

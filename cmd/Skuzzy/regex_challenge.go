@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	regexp "github.com/ando-masaki/go-pcre"
+	"github.com/tjarratt/babble"
 	"log"
 	"math/rand"
 	"sort"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"time"
 )
+
+var babbler = babble.NewBabbler()
 
 type RegexChallenge struct {
 	settings *ServerConfig
@@ -24,7 +27,12 @@ var RegexChallengeChannels = make(map[string]RegexChallenge)
 
 var maxSleep = (3600 * 6)
 
+func chalelngePrompt() string {
+	word := babbler.Babble()
+	return fmt.Sprintf(`Respond with a regular expression that will match a random string of your choosing.Seed:%s`,word)
+}
 func RegexChallengeWorker() {
+	babbler.Count = 1
 	time.Sleep(30 * time.Second) // Initial sleep while things get set up
 	for {
 		RegexChallengeMutex.Lock()
@@ -37,7 +45,7 @@ func RegexChallengeWorker() {
 					Channel:       v.Channel,
 					Server:        v.settings.Name,
 					sysprompt:     text,
-					request:       "Respond with a regular expression challenge",
+					request:       chalelngePrompt(),
 					reload:        false,
 					reset:         false,
 					OriginalQuery: "regex\nchallenge",
@@ -70,7 +78,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 				Channel:       req.Channel,
 				Server:        req.Server,
 				sysprompt:     text,
-				request:       "Respond with a regular expression challenge",
+				request:       chalelngePrompt(),
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -121,7 +129,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				Channel:       channel,
 				Server:        server,
 				sysprompt:     text,
-				request:       "Respond with a regular expression challenge",
+				request:       chalelngePrompt(),
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -142,22 +150,51 @@ type KV struct {
 }
 
 func SendRegexScores(Server string, Channel string) {
-	regex_scores := RegexScores(Server, Channel, 86400*30)
-	response := "Top 10 Regex Scores for the past 30 days: "
-	var scores_slice []KV
-	for user, score := range regex_scores {
-		scores_slice = append(scores_slice, KV{user, score})
+	if _, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
+		regex_scores := RegexScores(Server, Channel, 86400*30)
+		response := "Top 10 Regex Scores for the past 30 days: "
+		var scores_slice []KV
+		for user, score := range regex_scores {
+			scores_slice = append(scores_slice, KV{user, score})
+		}
+		sort.Slice(scores_slice, func(i, j int) bool {
+			return scores_slice[i].V > scores_slice[j].V
+		})
+		if len(scores_slice) > 10 {
+			scores_slice = scores_slice[:10]
+		}
+		for i, scores := range scores_slice {
+			response = fmt.Sprintf("%s | %s (%d): %d  |", response, scores.K, i+1, scores.V)
+		}
+		send_irc(Server, Channel, response)
 	}
-	sort.Slice(scores_slice, func(i, j int) bool {
-		return scores_slice[i].V > scores_slice[j].V
-	})
-	if len(scores_slice) > 10 {
-		scores_slice = scores_slice[:10]
+}
+
+func NextRegexChallenge(Server string, Channel string, user string) {
+	if challenge, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
+		
+		last_attempt := RegexLastAttempt(Server, Channel, user)
+		delta := int(time.Now().Unix()) - last_attempt
+		if last_attempt == 0 || (maxSleep-delta) < maxSleep {
+			_, text := FindPrompt(challenge.settings, "deepseek", Channel, "regex\nchallenge")
+			challenge.Timer = time.Now().Unix()
+			req := DeepseekRequest{
+				Channel:       Channel,
+				Server:        Server,
+				sysprompt:     text,
+				request:       chalelngePrompt(),
+				reload:        false,
+				reset:         false,
+				OriginalQuery: "regex\nchallenge",
+				User:          "",
+			}
+			DeepseekQueue <- req
+			log.Printf("[NextRegexChallenge] New challenge request queued because user requested it:%d/%d.\n",delta,last_attempt)
+		} else {
+			log.Printf("[NextRegexChallenge] New challenge request denied because user requested it with:%d/%d.\n",delta,last_attempt)
+			send_irc(Server, Channel, fmt.Sprintf("Sorry %s, you need to wait %d minutes before you can request the next challenge.", user, (maxSleep-delta)/60))
+		}
 	}
-	for i, scores := range scores_slice {
-		response = fmt.Sprintf("%s | %s (%d): %d  |", response, scores.K, i+1, scores.V)
-	}
-	send_irc(Server, Channel, response)
 }
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#%&-_<> =,"

@@ -62,7 +62,7 @@ func server(configuration string) {
 
 func main() {
 	log.Println("[Main] Starting up.")
-	
+
 	var servers []string
 	db_path := "skuzzy.db"
 	for i, v := range os.Args {

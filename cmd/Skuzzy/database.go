@@ -133,6 +133,24 @@ func RegexScores(server string, channel string, oldest int) map[string]int {
 	return scores
 }
 
+func RegexLastAttempt(server string, channel string, user string) int {
+	last_attempt := 0
+	channel = strings.ToLower(channel)
+	user = strings.ToLower(user)
+	err := DB.QueryRow("SELECT  last_attempt FROM regex_challenge_scores WHERE server = ? AND channel = ? AND user = ?", server, channel, user).Scan(&last_attempt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[RegexLastAttempt] No rows in the regex challenge last attempt table")
+			return last_attempt
+		} else {
+			log.Printf("[RegexLastAttempt] Warning, unexpected error when searching for last attempt:%v\n", err)
+			return last_attempt
+		}
+	}
+
+	return last_attempt
+}
+
 /* Stores a text string in the database. */
 func AddMemory(text string) error {
 	_, err := DB.Exec("INSERT OR IGNORE INTO memories (text) VALUES (?)", text)
