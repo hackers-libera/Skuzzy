@@ -74,6 +74,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n%v\n", response, err)
 			_, text := FindPrompt(challenge.settings, "deepseek", req.Channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
+			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
 			req := DeepseekRequest{
 				Channel:       req.Channel,
 				Server:        req.Server,
@@ -125,6 +126,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			}
 			_, text := FindPrompt(challenge.settings, "deepseek", channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
+			RegexChallengeChannels[server+"/"+channel] = challenge
 			req := DeepseekRequest{
 				Channel:       channel,
 				Server:        server,
@@ -178,6 +180,7 @@ func NextRegexChallenge(Server string, Channel string, user string) {
 		if last_attempt == 0 || (maxSleep-delta) < maxSleep {
 			_, text := FindPrompt(challenge.settings, "deepseek", Channel, "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
+			RegexChallengeChannels[Server+"/"+Channel] = challenge
 			req := DeepseekRequest{
 				Channel:       Channel,
 				Server:        Server,
