@@ -267,11 +267,14 @@ func irc_loop(settings *ServerConfig) {
 						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
 							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
 						}
-						if strings.EqualFold(query, "regex scores") {
+						if strings.EqualFold(query, "!regex scores") {
 							SendRegexScores(settings.Name, from_channel)
 						}
-						if strings.EqualFold(query,"next regex") {
-							NextRegexChallenge(settings.Name,from_channel,user)
+						if strings.EqualFold(query, "!next regex") {
+							NextRegexChallenge(settings.Name, from_channel, user)
+						}
+						if strings.Contains(query, "@@") {
+							query = ParsePreferences(settings.Name, from_channel, user, query)
 						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
@@ -340,7 +343,7 @@ func irc_loop(settings *ServerConfig) {
 										cleanQuery = strings.ReplaceAll(cleanQuery, "@reload", "")
 										reload = true
 									}
-									prompt, text := FindPrompt(settings, llm, from_channel, cleanQuery)
+									prompt, text := FindPrompt(settings, llm, from_channel, user, cleanQuery)
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
@@ -360,11 +363,11 @@ func irc_loop(settings *ServerConfig) {
 									log.Printf("Deepseek query [%s]:\n%v\n", prompt, req)
 								}
 							} else {
-								prompt, _ := FindPrompt(settings, llm, from_channel, query)
-								if len(prompt) == 0 || strings.HasSuffix(prompt, "/default") {
-									log.Printf("Skipping LLM query due to default prompt and no mention.")
+								prompt, _ := FindPrompt(settings, llm, from_channel, user, query)
+								if len(prompt) == 0 || !mention { //|| strings.HasSuffix(prompt, "/default") {
+									log.Printf("Skipping LLM query due to null prompt and no mention.")
 								} else {
-									prompt, text := FindPrompt(settings, llm, from_channel, query)
+									prompt, text := FindPrompt(settings, llm, from_channel, user, query)
 									text = strings.Replace(text, "{NICK}", settings.Nick, -1)
 									text = strings.Replace(text, "{USER}", user, -1)
 									text = strings.Replace(text, "{CHANNEL}", from_channel, -1)
@@ -397,11 +400,31 @@ func irc_loop(settings *ServerConfig) {
 	}
 }
 
-func FindPrompt(settings *ServerConfig, llm string, from_channel string, query string) (string, string) {
+func FindPrompt(settings *ServerConfig, llm string, from_channel string, user string, query string) (string, string) {
 
 	if strings.EqualFold(llm, "deepseek") {
-		return FindPromptDeepseek(settings, from_channel, query)
+		return FindPromptDeepseek(settings, from_channel, user, query)
 	}
 
 	return "", ""
+}
+
+var rPrefs = regexp.MustCompile(`@@(\w+)=(\w+)`)
+
+func ParsePreferences(server, channel, user, query string) string {
+
+	matches := rPrefs.FindAllStringSubmatch(query, -1)
+
+	for _, match := range matches {
+		log.Printf("[ParsePreferences] Parsing preference %s/%s[%s]\n", match[0], match[1], match[2])
+		if !CleanUser.MatchString(match[1]) {
+			log.Printf("[ParsePreferences] Warning, invalid preference for query %s:%s\n", query, match[1])
+
+		}
+		query = strings.Replace(query, match[0], "", -1)
+		SetPreference(server, channel, user, match[1], match[2])
+	}
+
+	return query
+
 }

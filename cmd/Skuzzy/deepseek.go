@@ -92,11 +92,12 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 	}
 }
 
-func FindPromptDeepseek(settings *ServerConfig, from_channel string, query string) (string, string) {
+func FindPromptDeepseek(settings *ServerConfig, from_channel string, user string, query string) (string, string) {
 	prefix := settings.Name + "/" + from_channel
 	SysPromptsMutex.RLock()
 	prompt := ""
 	text := ""
+	preferred_prompt := GetPreference(settings.Name, from_channel, user, "sysprompt")
 	defer SysPromptsMutex.RUnlock()
 	for key, value := range SysPrompts {
 		if strings.HasPrefix(key, prefix) {
@@ -111,8 +112,15 @@ func FindPromptDeepseek(settings *ServerConfig, from_channel string, query strin
 				prompt = key
 				text = value
 				break
+			} else if preferred_prompt != "" && strings.HasSuffix(key, "/"+preferred_prompt) {
+				log.Printf("[FindPromptDeepseek] Found user preferred prompt %s for query:%s\n", key, query)
+
+				prompt = key
+				text = value
+				break
 			} else if strings.HasSuffix(key, "/default") {
 				log.Printf("[FindPromptDeepseek] Defaulting to prompt %s for query:%s\n", key, query)
+
 				prompt = key
 				text = value
 

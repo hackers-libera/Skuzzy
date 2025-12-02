@@ -100,7 +100,7 @@ func requeueAsChat(settings *ServerConfig, originalReq DeepseekRequest) {
 	log.Printf("LLM determined this was not a reminder, reqeueing as chat: %s",
 		originalReq.OriginalQuery)
 
-	_, text := FindPrompt(settings, "deepseek", originalReq.Channel, originalReq.OriginalQuery)
+	_, text := FindPrompt(settings, "deepseek", originalReq.Channel, "", originalReq.OriginalQuery)
 
 	/* Can't get backlog available here. Do we care? */
 	text = strings.Replace(text, "{NICK}", settings.Nick, -1)

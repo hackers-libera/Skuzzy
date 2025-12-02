@@ -63,18 +63,32 @@ func InitDB(filepath string) error {
 		return fmt.Errorf("Failed to create reminders table: %w", err)
 	}
 
+	/* Preferences. */
+	_, err = db.Exec(`
+          CREATE TABLE IF NOT EXISTS prefs (
+            server TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            user TEXT NOT NULL,
+            preference TEXT NOT NULL,
+            data
+            );
+          `)
+	if err != nil {
+		return fmt.Errorf("Failed to create prefs table: %w", err)
+	}
+
 	DB = db
 	log.Println("Database init success.")
 	return nil
 }
 
-var cleanUser = regexp.MustCompile(`^[a-zA-Z0-9-_\.\{\}<>@!~\^\*&\(\)=` + "`]*$")
+var CleanUser = regexp.MustCompile(`^[a-zA-Z0-9-_\.\{\}<>@!~\^\*&\(\)=` + "`]*$")
 
 func RegexSolved(server string, channel string, user string, points int) {
 	channel = strings.ToLower(channel)
 	user = strings.ToLower(user)
 
-	if !cleanUser.MatchString(user) {
+	if !CleanUser.MatchString(user) {
 		log.Printf("[RegexSolved] Warning, unable to update scorse for user %s, bad characters in the user name\n", user)
 	}
 	var score int
@@ -148,12 +162,57 @@ func RegexLastAttempt(server string, channel string, user string) int {
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("[RegexLastAttempt] No rows in the regex challenge last attempt table")
-			return last_attempt
 		} else {
 			log.Printf("[RegexLastAttempt] Warning, unexpected error when searching for last attempt:%v\n", err)
-			return last_attempt
 		}
 	}
 
 	return last_attempt
+}
+
+func SetPreference(server, channel, user, preference, data string) {
+	channel = strings.ToLower(channel)
+	user = strings.ToLower(user)
+	statement_del, err := DB.Prepare("DELETE FROM prefs WHERE server = ? AND channel = ? AND user = ? AND preference = ?")
+	if err != nil {
+		log.Printf("[SetPreference] Error, unable to prepare statement for deleting %s's preference %v:%v\n", user, preference, err)
+		return
+	}
+	defer statement_del.Close()
+
+	_, err = statement_del.Exec(server, channel, user, preference)
+	if err != nil {
+		log.Printf("[SetPreference] Error, unable to Execute statement for deleting %s's preference %v:%v\n", user, preference, err)
+		return
+	}
+	log.Printf("[SetPreference] Deleted %s's preference %v:%v\n", user, preference, err)
+
+	statement, err := DB.Prepare("INSERT OR REPLACE INTO prefs (server, channel, user, preference,data) VALUES (?, ?, ?, ?, ?)")
+	if err != nil {
+		log.Printf("[SetPreference] Error, unable to prepare statement for updating %s's preference %v/%v:%v\n", user, preference, data, err)
+		return
+	}
+	defer statement.Close()
+
+	_, err = statement.Exec(server, channel, user, preference, data)
+	if err != nil {
+		log.Printf("[SetPreference] Error, unable to Execute statement for updating %s's preference %v/%v:%v\n", user, preference, data, err)
+		return
+	}
+	log.Printf("[SetPreference] Updated %s's preference %v/%v:%v\n", user, preference, data, err)
+}
+
+func GetPreference(server, channel, user, preference string) string {
+	channel = strings.ToLower(channel)
+	user = strings.ToLower(user)
+	var result string
+	err := DB.QueryRow("SELECT  data FROM prefs WHERE server = ? AND channel = ? AND user = ? AND preference = ?", server, channel, user, preference).Scan(&result)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[GetPreference] No rows in the prefs table")
+		} else {
+			log.Printf("[GetPreference] Warning, unexpected error when searching for preferenc for %s/%s/%s,%s:%v\n", server, channel, user, preference, err)
+		}
+	}
+	return result
 }
