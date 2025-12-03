@@ -50,29 +50,29 @@ func InitDB(filepath string) error {
 
 	/* Reminders. */
 	_, err = db.Exec(`
-          CREATE TABLE IF NOT EXISTS reminders (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-            server TEXT NOT NULL,
-            channel TEXT NOT NULL,
-            user TEXT NOT NULL,
-            message TEXT NOT NULL,
-            end_time INTEGER NOT NULL
-            );
-          `)
+		CREATE TABLE IF NOT EXISTS reminders (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		server TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		user TEXT NOT NULL,
+		message TEXT NOT NULL,
+		end_time INTEGER NOT NULL
+		);
+	`)
 	if err != nil {
 		return fmt.Errorf("Failed to create reminders table: %w", err)
 	}
 
 	/* Preferences. */
 	_, err = db.Exec(`
-          CREATE TABLE IF NOT EXISTS prefs (
-            server TEXT NOT NULL,
-            channel TEXT NOT NULL,
-            user TEXT NOT NULL,
-            preference TEXT NOT NULL,
-            data
-            );
-          `)
+		CREATE TABLE IF NOT EXISTS prefs (
+		server TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		user TEXT NOT NULL,
+		preference TEXT NOT NULL,
+		data
+		);
+	`)
 	if err != nil {
 		return fmt.Errorf("Failed to create prefs table: %w", err)
 	}
