@@ -91,7 +91,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 			challenge.Regex = newRegex
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
 			log.Printf("[NewRegexChallenge] New regex challenge for [%s/%s]:%s\n", req.Server, req.Channel, rex)
-			send_irc(req.Server, req.Channel, "Regex Challenge:"+rex)
+			send_irc(req.Server, req.Channel, "Regex Challenge:`"+rex+"`")
 		}
 	}
 }
@@ -104,6 +104,10 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			log.Println("[CheckRegexChallenge] Recovered from panic:", r)
 		}
 	}()
+	bridge_user := BridgeUser(query)
+	if bridge_user != "" {
+		user = bridge_user
+	}
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if strings.Contains(query, ">") {
 			query_s := strings.Split(query, ">")
@@ -111,10 +115,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				query = strings.TrimSpace(query_s[1])
 				log.Println("New query after bridge user removal:" + query)
 			}
-			bridge_user := BridgeUser(query)
-			if bridge_user != "" {
-				user = bridge_user
-			}
+
 		}
 		user = strings.ToLower(user)
 		if challenge.Regex.MatchString(query) {
@@ -181,6 +182,8 @@ type KV struct {
 }
 
 func SendRegexScores(Server string, Channel string) {
+	RegexChallengeMutex.Lock()
+	defer RegexChallengeMutex.Unlock()
 	if _, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
 		regex_scores := RegexScores(Server, Channel, 86400*30)
 		response := "Top 10 Regex Scores for the past 30 days: "
@@ -202,6 +205,8 @@ func SendRegexScores(Server string, Channel string) {
 }
 
 func NextRegexChallenge(Server string, Channel string, user string) {
+	RegexChallengeMutex.Lock()
+	defer RegexChallengeMutex.Unlock()
 	user = strings.ToLower(user)
 	if challenge, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
 
