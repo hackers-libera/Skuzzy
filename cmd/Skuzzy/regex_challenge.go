@@ -105,9 +105,9 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 		}
 	}()
 	bridge_user := BridgeUser(query)
-			if bridge_user != "" {
-				user = bridge_user
-			}
+	if bridge_user != "" {
+		user = bridge_user
+	}
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if strings.Contains(query, ">") {
 			query_s := strings.Split(query, ">")
@@ -115,7 +115,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				query = strings.TrimSpace(query_s[1])
 				log.Println("New query after bridge user removal:" + query)
 			}
-			
+
 		}
 		user = strings.ToLower(user)
 		if challenge.Regex.MatchString(query) {
