@@ -232,6 +232,7 @@ func irc_loop(settings *ServerConfig) {
 					} else if words[1] == "PRIVMSG" && words_len >= 3 {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
+						_query := query
 						user := strings.TrimLeft(words[0], ":")
 
 						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
@@ -265,7 +266,7 @@ func irc_loop(settings *ServerConfig) {
 							}
 						}
 						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
-							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
+							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(_query, `"`))
 						}
 						if strings.EqualFold(query, "!regex scores") {
 							SendRegexScores(settings.Name, from_channel)

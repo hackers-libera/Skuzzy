@@ -105,9 +105,9 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 		}
 	}()
 	bridge_user := BridgeUser(query)
-			if bridge_user != "" {
-				user = bridge_user
-			}
+	if bridge_user != "" {
+		user = bridge_user
+	}
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if strings.Contains(query, ">") {
 			query_s := strings.Split(query, ">")
@@ -115,7 +115,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				query = strings.TrimSpace(query_s[1])
 				log.Println("New query after bridge user removal:" + query)
 			}
-			
+
 		}
 		user = strings.ToLower(user)
 		if challenge.Regex.MatchString(query) {
@@ -145,7 +145,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				OriginalQuery: "regex\nchallenge",
 				User:          "",
 			}
-			sleep_time := time.Duration(20  + rand.Intn(120))
+			sleep_time := time.Duration(10 + rand.Intn(60))
 			time.Sleep(sleep_time * time.Second)
 			DeepseekQueue <- req
 			log.Printf("[CheckRegexChallenge] New challenge request queued because the previous one was solved.\n")
@@ -256,7 +256,7 @@ var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
 func BridgeUser(query string) string {
 
 	matches := rBridge.FindAllStringSubmatch(query, -1)
-
+	log.Printf("[BridgeUser] Debug:%s\n", query)
 	for _, match := range matches {
 		log.Printf("[BridgeUser] Found [%s]:%s\n", match[1], match[0])
 		return match[1]
