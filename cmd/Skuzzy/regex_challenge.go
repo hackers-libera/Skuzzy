@@ -111,14 +111,21 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				query = strings.TrimSpace(query_s[1])
 				log.Println("New query after bridge user removal:" + query)
 			}
+			bridge_user := BridgeUser(query)
+			if bridge_user != "" {
+				user = bridge_user
+			}
 		}
+		user = strings.ToLower(user)
 		if challenge.Regex.MatchString(query) {
 			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
 			points := maxSleep - int(int(time.Now().Unix())-int(challenge.Timer))
+			points = points / (maxSleep / 100)
+			points += 1
 			RegexSolved(server, channel, user, points)
 			regex_scores := RegexScores(server, channel, 86400*30)
 
-			if score, ok := regex_scores[strings.ToLower(user)]; ok {
+			if score, ok := regex_scores[user]; ok {
 
 				send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! Your new score is: %d (+%d)", user, score, points))
 			} else {
@@ -137,11 +144,33 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				OriginalQuery: "regex\nchallenge",
 				User:          "",
 			}
+			//sleep_time := time.Duration(60  + rand.Intn(720))
+			//time.Sleep(sleep_time * time.Second)
 			DeepseekQueue <- req
 			log.Printf("[CheckRegexChallenge] New challenge request queued because the previous one was solved.\n")
 
 		} else {
 			log.Printf("[CheckRegexChallenge] Non-matching regex:%s\n", query)
+			points := maxSleep - int(int(time.Now().Unix())-int(challenge.Timer))
+			if points == 0 {
+				points = 0 - maxSleep
+			} else {
+				points = 0 - points
+			}
+			points = points / (maxSleep / 100)
+			points -= 1
+			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
+
+			RegexSolved(server, channel, user, points)
+			regex_scores := RegexScores(server, channel, 86400*30)
+
+			if score, ok := regex_scores[strings.ToLower(user)]; ok {
+
+				send_irc(server, channel, fmt.Sprintf("Bad regex %s. Try harder! Your new score is: %d (%d)", user, score, points))
+			} else {
+				log.Printf("[CheckRegexChallenge] Warning, updated user -score but updated score was not found!!\n")
+			}
+
 		}
 	}
 }
@@ -173,30 +202,36 @@ func SendRegexScores(Server string, Channel string) {
 }
 
 func NextRegexChallenge(Server string, Channel string, user string) {
+	user = strings.ToLower(user)
 	if challenge, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
 
-		last_attempt := RegexLastAttempt(Server, Channel, user)
-		delta := int(time.Now().Unix()) - last_attempt
-		if last_attempt == 0 || (maxSleep-delta) < maxSleep {
-			_, text := FindPrompt(challenge.settings, "deepseek", Channel, "", "regex\nchallenge")
-			challenge.Timer = time.Now().Unix()
-			RegexChallengeChannels[Server+"/"+Channel] = challenge
-			req := DeepseekRequest{
-				Channel:       Channel,
-				Server:        Server,
-				sysprompt:     text,
-				request:       chalelngePrompt(),
-				reload:        false,
-				reset:         false,
-				OriginalQuery: "regex\nchallenge",
-				User:          "",
-			}
-			DeepseekQueue <- req
-			log.Printf("[NextRegexChallenge] New challenge request queued because user requested it:%d/%d.\n", delta, last_attempt)
-		} else {
-			log.Printf("[NextRegexChallenge] New challenge request denied because user requested it with:%d/%d.\n", delta, last_attempt)
-			send_irc(Server, Channel, fmt.Sprintf("Sorry %s, you need to wait %d minutes before you can request the next challenge.", user, (maxSleep-delta)/60))
+		_, text := FindPrompt(challenge.settings, "deepseek", Channel, "", "regex\nchallenge")
+		challenge.Timer = time.Now().Unix()
+		RegexChallengeChannels[Server+"/"+Channel] = challenge
+		req := DeepseekRequest{
+			Channel:       Channel,
+			Server:        Server,
+			sysprompt:     text,
+			request:       chalelngePrompt(),
+			reload:        false,
+			reset:         false,
+			OriginalQuery: "regex\nchallenge",
+			User:          "",
 		}
+		RegexSolved(Server, Channel, user, -50)
+		regex_scores := RegexScores(Server, Channel, 86400*30)
+
+		if score, ok := regex_scores[user]; ok {
+
+			send_irc(Server, Channel, fmt.Sprintf("Too hard %s? Your new score is: %d (-50); new regex challenge ahead!", user, score))
+		} else {
+			log.Printf("[NextRegexChallenge] Warning, updated user score but updated score was not found!!\n")
+		}
+		//sleep_time := time.Duration(10  + rand.Intn(90))
+		//time.Sleep(sleep_time * time.Second)
+		DeepseekQueue <- req
+		log.Printf("[NextRegexChallenge] New challenge request queued because user requested it.\n")
+
 	}
 }
 
@@ -209,4 +244,19 @@ func generateRandomString(length int) string {
 		b[i] = charset[seededRand.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+var rBridge = regexp.MustCompile(`^<(.+)>.*$`)
+
+func BridgeUser(query string) string {
+
+	matches := rBridge.FindAllStringSubmatch(query, -1)
+
+	for _, match := range matches {
+		log.Printf("[BridgeUser] Found [%s]:%s\n", match[1], match[0])
+		return match[1]
+
+	}
+	return ""
+
 }

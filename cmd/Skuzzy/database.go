@@ -22,6 +22,7 @@ func InitDB(filepath string) error {
 	/* Regex challenge */
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS regex_challenge_scores (
+			id TEXT PRIMARY KEY,
 		user TEXT,
 		server TEXT,
 		channel TEXT,
@@ -86,13 +87,13 @@ var CleanUser = regexp.MustCompile(`^[a-zA-Z0-9-_\.\{\}<>@!~\^\*&\(\)=` + "`]*$"
 
 func RegexSolved(server string, channel string, user string, points int) {
 	channel = strings.ToLower(channel)
-	user = strings.ToLower(user)
 
+	_id := server + "/" + channel + "/" + user
 	if !CleanUser.MatchString(user) {
-		log.Printf("[RegexSolved] Warning, unable to update scorse for user %s, bad characters in the user name\n", user)
+		log.Printf("[RegexSolved] Warning, unable to update score for user %s, bad characters in the user name\n", user)
 	}
 	var score int
-	err := DB.QueryRow("SELECT score FROM regex_challenge_scores WHERE user = ? AND server = ? AND channel = ?", user, server, channel).Scan(&score)
+	err := DB.QueryRow("SELECT score FROM regex_challenge_scores WHERE id = ?", _id).Scan(&score)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("No user found with ID %d\n", user)
@@ -101,17 +102,18 @@ func RegexSolved(server string, channel string, user string, points int) {
 			return
 		}
 	}
+	log.Printf("Points to update:%d/%d\n", points, score)
+	score = score + points
+	log.Printf("Score = %d \n", score)
 
-	score += points
-
-	statement, err := DB.Prepare("INSERT OR REPLACE INTO regex_challenge_scores (user, server, channel, score, last_attempt) VALUES (?, ?, ?, ?, ?)")
+	statement, err := DB.Prepare("INSERT OR REPLACE INTO regex_challenge_scores (id,user, server, channel, score, last_attempt) VALUES (?,?, ?, ?, ?, ?)")
 	if err != nil {
 		log.Printf("[RegexSolved] Error, unable to prepare statement for updating %s's score:%v\n", user, err)
 		return
 	}
 	defer statement.Close()
 
-	_, err = statement.Exec(user, server, channel, score, int(time.Now().Unix()))
+	_, err = statement.Exec(_id, user, server, channel, score, int(time.Now().Unix()))
 	if err != nil {
 		log.Printf("[RegexSolved] Error, unable to Execute statement for updating %s's score:%v\n", user, err)
 		return
@@ -122,6 +124,7 @@ func RegexSolved(server string, channel string, user string, points int) {
 func RegexScores(server string, channel string, oldest int) map[string]int {
 	var scores = make(map[string]int)
 	channel = strings.ToLower(channel)
+
 	rows, err := DB.Query("SELECT user, score, last_attempt FROM regex_challenge_scores WHERE server = ? AND channel = ?", server, channel)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -157,8 +160,9 @@ func RegexScores(server string, channel string, oldest int) map[string]int {
 func RegexLastAttempt(server string, channel string, user string) int {
 	last_attempt := 0
 	channel = strings.ToLower(channel)
-	user = strings.ToLower(user)
-	err := DB.QueryRow("SELECT  last_attempt FROM regex_challenge_scores WHERE server = ? AND channel = ? AND user = ?", server, channel, user).Scan(&last_attempt)
+
+	_id := server + "/" + channel + "/" + user
+	err := DB.QueryRow("SELECT  last_attempt FROM regex_challenge_scores WHERE id = ?", _id).Scan(&last_attempt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("[RegexLastAttempt] No rows in the regex challenge last attempt table")
