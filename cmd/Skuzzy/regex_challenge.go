@@ -251,7 +251,7 @@ func generateRandomString(length int) string {
 	return string(b)
 }
 
-var rBridge = regexp.MustCompile(`^<([^>])>.*$`)
+var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
 
 func BridgeUser(query string) string {
 
