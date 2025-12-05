@@ -15,13 +15,10 @@ import (
 var babbler = babble.NewBabbler()
 
 type RegexChallenge struct {
-	settings  *ServerConfig
-	Channel   string
-	Timer     int64
-	Regex     *regexp.Regexp
-	RegexText string
-	Active    bool
-	SleepTime time.Duration
+	settings *ServerConfig
+	Channel  string
+	Timer    int64
+	Regex    *regexp.Regexp
 }
 
 var RegexChallengeMutex = sync.RWMutex{}
@@ -30,46 +27,62 @@ var RegexChallengeChannels = make(map[string]RegexChallenge)
 
 var maxSleep = (3600 * 6)
 
-func chalelngePrompt(previous string) string {
-	//word := babbler.Babble()
-	return fmt.Sprintf(`Respond with a regular expression that is difficult and complex. The regular expression should be very different compared to:%s`, previous)
+func challengePrompt() string {
+	word := babbler.Babble()
+	return fmt.Sprintf(`Respond with a regular expression that will match a random string of your choosing.Seed:%s`, word)
 }
 func RegexChallengeWorker() {
 	babbler.Count = 1
-	time.Sleep(30 * time.Second) // Initial sleep while things get set up
+	time.Sleep(30 * time.Second)       // Initial sleep while things get set up
+	const newChallengeThreshold = 1800 /* 30 minutes. */
 	for {
 		RegexChallengeMutex.Lock()
 		for k, v := range RegexChallengeChannels {
-			log.Printf("[RegexChallengeWorker] Processing RegexChallenge for %s\n", k)
 			prompt, text := FindPrompt(v.settings, "deepseek", v.Channel, "", "regex\nchallenge")
-			if strings.HasSuffix(prompt, "/regex_challenge") { // && (v.Timer == 0 || ((time.Now().Unix() - v.Timer) > (3600*2))) {
+			if !strings.HasSuffix(prompt, "/regex_challenge") {
+				log.Printf("[RegexChallengeWorker] Bad prompt for %s. Prompt: '%s'. "+
+					"Resetting timer to retry soon.\n", k, prompt)
+				v.Timer = 0 /* Reset timer. Worker will try queueing new challenge later. */
+				RegexChallengeChannels[k] = v
+				continue
+			}
+			log.Printf("[RegexChallengeWorker] Channel: %s, v.Timer: %d, time.Now().Unix(): %d, "+
+				"staleThreshold: %d\n", k, v.Timer, time.Now().Unix(), newChallengeThreshold)
+			log.Printf("[RegexChallengeWorker] time elapsed: %d, Condition result: %t\n",
+				(time.Now().Unix() - v.Timer), (v.Timer == 0 || ((time.Now().Unix() - v.Timer) > newChallengeThreshold)))
+			/*
+			 * A challenge is stale if it's been active > 2 hours or
+			 * there's no timer (initial state).
+			 */
+			if v.Timer == 0 || ((time.Now().Unix() - v.Timer) > newChallengeThreshold) {
+				log.Printf("[RegexChallengeWorker] Processing new RegexChallenge for %s\n", k)
 				v.Timer = time.Now().Unix()
+				RegexChallengeChannels[k] = v /* Update map with new timer. */
 				req := DeepseekRequest{
 					Channel:       v.Channel,
 					Server:        v.settings.Name,
 					sysprompt:     text,
-					request:       chalelngePrompt(v.RegexText),
+					request:       challengePrompt(),
 					reload:        false,
 					reset:         false,
 					OriginalQuery: "regex\nchallenge",
 					User:          "",
 				}
 				DeepseekQueue <- req
-				log.Printf("[RegexChallengeWorker] New challenge request queued")
-			} else {
-				log.Printf("[RegexChallengeWorker] Bad prompt or timer not ready. Prompt:%s,Timer:%d\n", prompt, v.Timer)
+				log.Printf("[RegexChallengeWorker] New challenge request queued for %s "+
+					"because existing one is stale or missing.", k)
 			}
 		}
 		RegexChallengeMutex.Unlock()
-		sleep_time := time.Duration((3600 * 2) + rand.Intn(maxSleep))
+		/* Sleep for 30-60 mins. */
+		sleep_time := time.Duration(1800 + rand.Intn(1800)) /* 30 mins + random (0-30 mins). */
 		time.Sleep(sleep_time * time.Second)
-
 	}
 }
 
 func NewRegexChallenge(req DeepseekRequest, response string) {
 	RegexChallengeMutex.Lock()
-
+	defer RegexChallengeMutex.Unlock()
 	if challenge, ok := RegexChallengeChannels[req.Server+"/"+req.Channel]; ok {
 		rex := strings.TrimRight(strings.TrimLeft(strings.TrimSpace(response), `/`), `/`)
 		newRegex, err := regexp.Compile(rex)
@@ -82,7 +95,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 				Channel:       req.Channel,
 				Server:        req.Server,
 				sysprompt:     text,
-				request:       chalelngePrompt(challenge.RegexText),
+				request:       challengePrompt(),
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -91,20 +104,14 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 			DeepseekQueue <- req
 			log.Printf("[NewRegexChallenge] New challenge request queued because of a faulty regex.\n")
 		} else {
+			/* Set timer when valid regex is received and ready to be announced. */
+			challenge.Timer = time.Now().Unix()
 			challenge.Regex = newRegex
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
-			log.Printf("[NewRegexChallenge] New regex challenge for [%s/%s], sleeping for %v:%s\n", req.Server, req.Channel, challenge.SleepTime, rex)
-			time.Sleep(challenge.SleepTime * time.Second)
+			log.Printf("[NewRegexChallenge] New regex challenge for [%s/%s]:%s\n", req.Server, req.Channel, rex)
 			send_irc(req.Server, req.Channel, "Regex Challenge:`"+rex+"`")
-			challenge.Active = true
-			challenge.RegexText = rex
-			challenge.SleepTime = 0
-			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
-			RegexChallengeMutex.Unlock()
-			return
 		}
 	}
-	RegexChallengeMutex.Unlock()
 }
 
 func CheckRegexChallenge(server string, channel string, user string, query string) {
@@ -116,7 +123,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 		}
 	}()
 
-	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok && challenge.Active {
+	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if strings.Contains(query, ">") {
 			query_s := strings.Split(query, ">")
 			if len(query_s) > 1 {
@@ -125,6 +132,10 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			}
 
 		}
+		if len(query) > 1 && strings.HasPrefix(query, "\"") && strings.HasSuffix(query, "\"") {
+			query = query[1 : len(query)-1]
+		}
+
 		user = strings.ToLower(user)
 		if challenge.Regex.MatchString(query) {
 			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
@@ -135,33 +146,15 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			regex_scores := RegexScores(server, channel, 86400*30)
 
 			if score, ok := regex_scores[user]; ok {
-
 				send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! Your new score is: %d (+%d) 🎉", user, score, points))
-				challenge.Active = false
-				RegexChallengeChannels[server+"/"+channel] = challenge
-
 			} else {
 				log.Printf("[CheckRegexChallenge] Warning, updated user score but updated score was not found!!\n")
 			}
-			_, text := FindPrompt(challenge.settings, "deepseek", channel, "", "regex\nchallenge")
-			challenge.Timer = time.Now().Unix()
-			sleep_time := time.Duration(90 + rand.Intn(900))
-			challenge.SleepTime = sleep_time
+			/* Set timer to 0 to trigger new challenge on the worker's next run. */
+			challenge.Timer = 0
 			RegexChallengeChannels[server+"/"+channel] = challenge
-			req := DeepseekRequest{
-				Channel:       channel,
-				Server:        server,
-				sysprompt:     text,
-				request:       chalelngePrompt(challenge.RegexText),
-				reload:        false,
-				reset:         false,
-				OriginalQuery: "regex\nchallenge",
-				User:          "",
-			}
-
-			DeepseekQueue <- req
-			log.Printf("[CheckRegexChallenge] New challenge request queued because the previous one was solved.\n")
-
+			log.Printf("[CheckRegexChallenge] Regex challenge solved in %s/%s. Next challenge "+
+				"will be generated by worker.", server, channel)
 		} else {
 			log.Printf("[CheckRegexChallenge] Non-matching regex:%s\n", query)
 			points := maxSleep - int(int(time.Now().Unix())-int(challenge.Timer))
@@ -172,8 +165,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			}
 			regex_scores := RegexScores(server, channel, 86400*30)
 			if score, ok := regex_scores[strings.ToLower(user)]; score > 1000 && ok {
-
-				points = 0 - (int(float64(score) * float64(0.25)))
+				points = score - int(float64(score)*float64(0.25))
 
 			} else {
 				points = points / (maxSleep / 100)
@@ -224,38 +216,31 @@ func SendRegexScores(Server string, Channel string) {
 }
 
 func NextRegexChallenge(Server string, Channel string, user string) {
+	RegexChallengeMutex.Lock()
+	defer RegexChallengeMutex.Unlock()
 	user = strings.ToLower(user)
 	if challenge, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
-
-		_, text := FindPrompt(challenge.settings, "deepseek", Channel, "", "regex\nchallenge")
-		challenge.Timer = time.Now().Unix()
-		challenge.Active = false
-		sleep_time := time.Duration(30 + rand.Intn(90))
-		challenge.SleepTime = sleep_time
-		RegexChallengeChannels[Server+"/"+Channel] = challenge
-		req := DeepseekRequest{
-			Channel:       Channel,
-			Server:        Server,
-			sysprompt:     text,
-			request:       chalelngePrompt(challenge.RegexText),
-			reload:        false,
-			reset:         false,
-			OriginalQuery: "regex\nchallenge",
-			User:          "",
-		}
 		RegexSolved(Server, Channel, user, -50)
 		regex_scores := RegexScores(Server, Channel, 86400*30)
 
 		if score, ok := regex_scores[user]; ok {
-
 			send_irc(Server, Channel, fmt.Sprintf("Too hard %s? Your new score is: %d (-50); new regex challenge ahead!", user, score))
 		} else {
 			log.Printf("[NextRegexChallenge] Warning, updated user score but updated score was not found!!\n")
 		}
-
+		/* Queue new challenge immediately. */
+		_, text := FindPrompt(challenge.settings, "deeepseek", Channel, "", "regex\nchallenge")
+		req := DeepseekRequest{
+			Channel:       Channel,
+			Server:        Server,
+			sysprompt:     text,
+			request:       challengePrompt(),
+			OriginalQuery: "regex\nchallenge",
+		}
 		DeepseekQueue <- req
-		log.Printf("[NextRegexChallenge] New challenge request queued because user requested it.\n")
-
+		/* Also update timer to now. */
+		challenge.Timer = time.Now().Unix()
+		RegexChallengeChannels[Server+"/"+Channel] = challenge
 	}
 }
 
