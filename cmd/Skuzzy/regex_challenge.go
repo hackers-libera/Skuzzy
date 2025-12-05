@@ -104,10 +104,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			log.Println("[CheckRegexChallenge] Recovered from panic:", r)
 		}
 	}()
-	bridge_user := BridgeUser(query)
-	if bridge_user != "" {
-		user = bridge_user
-	}
+
 	if challenge, ok := RegexChallengeChannels[server+"/"+channel]; ok {
 		if strings.Contains(query, ">") {
 			query_s := strings.Split(query, ">")
@@ -128,7 +125,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 
 			if score, ok := regex_scores[user]; ok {
 
-				send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! Your new score is: %d (+%d)", user, score, points))
+				send_irc(server, channel, fmt.Sprintf("Regex challenge solved! Congrats %s! Your new score is: %d (+%d) 🎉", user, score, points))
 			} else {
 				log.Printf("[CheckRegexChallenge] Warning, updated user score but updated score was not found!!\n")
 			}
@@ -158,12 +155,18 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			} else {
 				points = 0 - points
 			}
-			points = points / (maxSleep / 100)
-			points -= 1
+			regex_scores := RegexScores(server, channel, 86400*30)
+			if score, ok := regex_scores[strings.ToLower(user)]; score > 1000 && ok {
+				points = score - int(float64(score)*float64(0.25))
+
+			} else {
+				points = points / (maxSleep / 100)
+				points -= 1
+			}
 			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
 
 			RegexSolved(server, channel, user, points)
-			regex_scores := RegexScores(server, channel, 86400*30)
+			regex_scores = RegexScores(server, channel, 86400*30)
 
 			if score, ok := regex_scores[strings.ToLower(user)]; ok {
 
@@ -249,19 +252,4 @@ func generateRandomString(length int) string {
 		b[i] = charset[seededRand.Intn(len(charset))]
 	}
 	return string(b)
-}
-
-var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
-
-func BridgeUser(query string) string {
-
-	matches := rBridge.FindAllStringSubmatch(query, -1)
-	log.Printf("[BridgeUser] Debug:%s\n", query)
-	for _, match := range matches {
-		log.Printf("[BridgeUser] Found [%s]:%s\n", match[1], match[0])
-		return match[1]
-
-	}
-	return ""
-
 }

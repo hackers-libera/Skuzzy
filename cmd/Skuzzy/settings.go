@@ -34,6 +34,7 @@ type ServerConfig struct {
 	DeepseekAPIKey        string            `yaml:"deepseek_api_key"`
 	MaxRemindersPerUser   int               `yaml:"max_reminders_per_user"`
 	ServerLogFile         string            `yaml:"server_log_file"`
+	RelayBots             []string          `yaml:"relay_bots,omitempty"`
 }
 
 func LoadServerConfig(path string) (*ServerConfig, error) {

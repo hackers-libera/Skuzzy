@@ -235,14 +235,19 @@ func irc_loop(settings *ServerConfig) {
 						_query := query
 						user := strings.TrimLeft(words[0], ":")
 
-						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
-						r, _ := regexp.Compile(`^<.+> `)
-						if r.MatchString(query) {
-							query = r.ReplaceAllString(query, "")
-						}
-
 						user = strings.Split(user, "!")[0]
+						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
 
+						bridge_user, _query := BridgeUser(query)
+						if bridge_user != "" {
+							for _, relay_bot := range settings.RelayBots {
+								if strings.EqualFold(bridge_user, relay_bot) {
+									user = bridge_user
+									query = _query
+									break
+								}
+							}
+						}
 						llm := ""
 						var channel *ChannelConfig
 
@@ -266,7 +271,7 @@ func irc_loop(settings *ServerConfig) {
 							}
 						}
 						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
-							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(_query, `"`))
+							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
 						}
 						if strings.EqualFold(query, "!regex scores") {
 							SendRegexScores(settings.Name, from_channel)
@@ -427,5 +432,20 @@ func ParsePreferences(server, channel, user, query string) string {
 	}
 
 	return query
+
+}
+
+var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
+
+func BridgeUser(query string) (string, string) {
+
+	matches := rBridge.FindAllStringSubmatch(query, -1)
+	log.Printf("[BridgeUser] Debug:%s\n", query)
+	for _, match := range matches {
+		log.Printf("[BridgeUser] Found [%s]:%s\n", match[1], match[0])
+		return match[1], strings.TrimSpace(strings.Replace(query, "<"+match[1]+">", "", -1))
+
+	}
+	return "", query
 
 }
