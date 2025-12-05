@@ -271,7 +271,10 @@ func irc_loop(settings *ServerConfig) {
 							}
 						}
 						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
+							log.Printf("Debug: query has double quotes:[%s]\n", query)
 							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
+						} else {
+							log.Printf("Debug: query has NO double quotes:[%s]\n", query)
 						}
 						if strings.EqualFold(query, "!regex scores") {
 							SendRegexScores(settings.Name, from_channel)
