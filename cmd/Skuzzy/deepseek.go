@@ -147,7 +147,7 @@ func LoadSysPrompts(settings *ServerConfig) {
 					log.Printf("Loaded Prompt '%s/%s/%s' -> Prompt: %s\n", settings.Name, channel.Name, promptName, text)
 					if strings.EqualFold(promptName, "regex_challenge") {
 						RegexChallengeMutex.Lock()
-						RegexChallengeChannels[settings.Name+"/"+channel.Name] = RegexChallenge{settings, channel.Name, time.Now().Unix(), pcre.MustCompile("^\n\n$"), "^$", false, 0}
+						RegexChallengeChannels[settings.Name+"/"+channel.Name] = RegexChallenge{settings, channel.Name, 0, pcre.MustCompile("^\n\n$")}
 						RegexChallengeMutex.Unlock()
 					}
 				}
