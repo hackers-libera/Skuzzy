@@ -70,6 +70,7 @@ func send_irc(server string, channel string, message string) {
 }
 
 func send_irc_raw(conn Connection, msg string) {
+	if len(msg) < 1 {return}
 	_, err := conn.cx.Write([]byte(msg))
 	if err != nil {
 		log.Printf("Failed to send IRC message:%v\nError:%v\n", msg, err)
@@ -513,13 +514,11 @@ func handlePM(settings *ServerConfig, user, query string) {
 				solve_message := fmt.Sprintf("Congrats to %s on finding the flag for '%s'!! 🎉🎉🎉. New level:%d",
 					user, k, ctf.Level)
 				send_irc(settings.Name, ctf.Channel, solve_message)
-				return
 			}
 			for hintname, hint := range ctf.Hints {
 				if strings.EqualFold("!"+hintname, query) {
 					send_irc(settings.Name, user, hint)
 					CTFHintTaken(settings, ctf, user)
-					return
 				}
 			}
 		}
@@ -539,6 +538,7 @@ func sendHelp(settings *ServerConfig, target, user string) {
 
 	for _, v := range strings.Split(Help, "\n") {
 		send_irc(settings.Name, user, v)
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -546,5 +546,6 @@ func sendTopicHelp(settings *ServerConfig, target, user string) {
 	send_irc(settings.Name, target, target+", Check your private messages. Sending you help about the topic CTF challenge.")
 	for _, v := range strings.Split(TopicHelp, "\n") {
 		send_irc(settings.Name, user, v)
+		time.Sleep(1 * time.Second)
 	}
 }
