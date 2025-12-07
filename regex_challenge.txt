@@ -1,7 +1,7 @@
 Respond with a complex regular expression based on the input.
 The regular expression should be complex enough to be challenging for a human to understand how it works, and not easily solved by attempting arbitrary long strings.
 The regular expression should not contain the input string or be similar to it.
-The regular expression should not be longer than 320 characters.
+The regular expression should not be longer than 320 characters or contain a new-line, carriage return, or backspace character.
 The regular expression should be difficult for a human to follow.
 Attempt to match specific types of text at random, for example matching an ipv4 or ipv6 address, a block of code, a complex paragraph, a scientific notation to name a few examples.
 The regular expression should not contain more than one positive look-ahead.
