@@ -19,6 +19,13 @@ type LLM struct {
 	Model string `yaml:"model"`
 }
 
+type CTF struct {
+	Channel string            `yaml:"channel"`
+	Flag    string            `yaml:"flag"`
+	Level   int               `yaml:"level"`
+	Hints   map[string]string `yaml:"hints"`
+}
+
 type ServerConfig struct {
 	Name                  string            `yaml:"name"`
 	Host                  string            `yaml:"host"`
@@ -35,6 +42,11 @@ type ServerConfig struct {
 	MaxRemindersPerUser   int               `yaml:"max_reminders_per_user"`
 	ServerLogFile         string            `yaml:"server_log_file"`
 	RelayBots             []string          `yaml:"relay_bots,omitempty"`
+	CtfConfigPath         string            `yaml:"ctf_config_path,omitempty"`
+}
+
+type CTFConfig struct {
+	CTFFlags map[string]CTF `yaml:"ctf_flags"`
 }
 
 func LoadServerConfig(path string) (*ServerConfig, error) {
@@ -43,14 +55,31 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
 
 	file_contents, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("Error loading settings from %v: %v", path, err)
+		log.Printf("[LoadServerConfig] Error loading settings from %v: %v", path, err)
 		return &config, err
 	}
 	err = yaml.Unmarshal([]byte(file_contents), &config)
 	if err != nil {
-		log.Printf("Error loading settings from %v: %v", path, err)
+		log.Printf("[LoadServerConfig] Error loading settings from %v: %v", path, err)
 		return &config, err
 	}
+	log.Printf("[LoadServerConfig] Loaded configuration from %s\n", path)
+	return &config, nil
+}
 
+func LoadCTFConfig(path string) (*CTFConfig, error) {
+	var config CTFConfig
+
+	file_contents, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("[LoadCTFConfig] Error loading settings from %v: %v", path, err)
+		return &config, err
+	}
+	err = yaml.Unmarshal([]byte(file_contents), &config)
+	if err != nil {
+		log.Printf("[LoadCTFConfig] Error loading settings from %v: %v", path, err)
+		return &config, err
+	}
+	log.Printf("[LoadCTFConfig] Loaded configuration from %s\n", path)
 	return &config, nil
 }

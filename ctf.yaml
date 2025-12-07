@@ -1,0 +1,7 @@
+ctf_flags:
+  topic_challenge:
+    channel: '#skuzzy'
+    flag: dummyflag
+    level: 1
+    hints:
+      hint1: First hint

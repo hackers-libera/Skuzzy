@@ -18,6 +18,7 @@ import (
 type Connection struct {
 	cx   net.Conn
 	pong int64
+	CTF  *CTFConfig
 }
 
 var Connections = make(map[string]Connection)
@@ -92,7 +93,18 @@ func irc_connect(settings *ServerConfig) error {
 		return err
 	}
 	ConnectionsMutex.Lock()
-	Connections[settings.Name] = Connection{conn, time.Now().Unix()}
+
+	if len(settings.CtfConfigPath) > 0 {
+		ctfconfig, err := LoadCTFConfig(settings.CtfConfigPath)
+		if err == nil {
+			Connections[settings.Name] = Connection{conn, time.Now().Unix(), ctfconfig}
+		} else {
+			Connections[settings.Name] = Connection{conn, time.Now().Unix(), nil}
+		}
+	} else {
+		Connections[settings.Name] = Connection{conn, time.Now().Unix(), nil}
+	}
+
 	ConnectionsMutex.Unlock()
 	Server = settings.Name
 
@@ -270,20 +282,53 @@ func irc_loop(settings *ServerConfig) {
 								break
 							}
 						}
-						if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
-							log.Printf("Debug: query has double quotes:[%s]\n", query)
-							go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
-						} else {
-							log.Printf("Debug: query has NO double quotes:[%s]\n", query)
-						}
-						if strings.EqualFold(query, "!regex scores") {
-							SendRegexScores(settings.Name, from_channel)
-						}
-						if strings.EqualFold(query, "!next regex") {
-							NextRegexChallenge(settings.Name, from_channel, user)
-						}
-						if strings.Contains(query, "@@") {
-							query = ParsePreferences(settings.Name, from_channel, user, query)
+						if channel != nil {
+							if strings.EqualFold(query, "!help") {
+								sendHelp(settings, from_channel, user)
+								continue
+							}
+							if strings.EqualFold(query, "!topic") {
+								sendTopicHelp(settings, from_channel, user)
+								continue
+							}
+
+							if strings.HasPrefix(query, `"`) && strings.HasSuffix(query, `"`) {
+								log.Printf("Debug: query has double quotes:[%s]\n", query)
+								go CheckRegexChallenge(settings.Name, from_channel, user, strings.Trim(query, `"`))
+							} else {
+								log.Printf("Debug: query has NO double quotes:[%s]\n", query)
+							}
+							if strings.EqualFold(query, "!regex scores") {
+								SendRegexScores(settings.Name, from_channel)
+								continue
+							}
+							if strings.EqualFold(query, "!next regex") {
+								NextRegexChallenge(settings.Name, from_channel, user)
+								continue
+							}
+							if strings.Contains(query, "@@") {
+								query = ParsePreferences(settings.Name, from_channel, user, query)
+							}
+							if strings.HasPrefix(query, "!") {
+
+								for k, ctf := range Connections[settings.Name].CTF.CTFFlags {
+									for hintname, hint := range ctf.Hints {
+										if strings.EqualFold("!"+hintname, query) && strings.EqualFold(from_channel, ctf.Channel) {
+											send_irc(settings.Name, user, hint)
+											send_irc(settings.Name, from_channel, "Check your private messages "+user+", I just sent you the hint:"+hintname+" for "+k+".")
+											CTFHintTaken(settings, ctf, user)
+											break
+										}
+									}
+								}
+								if strings.EqualFold(query, "!ctf_scores") {
+									SendCTFScores(settings.Name, from_channel)
+
+								}
+							}
+						} else if strings.EqualFold(settings.Nick, words[2]) {
+							handlePM(settings, user, query)
+							continue
 						}
 						if channel != nil && strings.EqualFold(llm, "deepseek") {
 							mention := mentioned(settings.Nick, query)
@@ -451,4 +496,55 @@ func BridgeUser(query string) (string, string) {
 	}
 	return "", query
 
+}
+
+func handlePM(settings *ServerConfig, user, query string) {
+
+	if strings.HasSuffix(query, "help") {
+		sendHelp(settings, user, user)
+	}
+	if strings.HasSuffix(query, "topic") {
+		sendTopicHelp(settings, user, user)
+	}
+	if Connections[settings.Name].CTF != nil {
+		for k, ctf := range Connections[settings.Name].CTF.CTFFlags {
+			if strings.EqualFold(query, ctf.Flag) {
+				CTFSolved(settings, k, ctf, user)
+				solve_message := fmt.Sprintf("Congrats to %s on finding the flag for '%s'!! 🎉🎉🎉. New level:%d",
+					user, k, ctf.Level)
+				send_irc(settings.Name, ctf.Channel, solve_message)
+				return
+			}
+			for hintname, hint := range ctf.Hints {
+				if strings.EqualFold("!"+hintname, query) {
+					send_irc(settings.Name, user, hint)
+					CTFHintTaken(settings, ctf, user)
+					return
+				}
+			}
+		}
+	}
+}
+
+func SendCTFScores(server, channel string) {
+	ctfscores := CTFScores(server, channel)
+	response := "CTF Scores for " + channel + ": "
+	for user, score_msg := range ctfscores {
+		response = fmt.Sprintf("%s | %s: %s |", response, user, score_msg)
+	}
+	send_irc(server, channel, response)
+}
+func sendHelp(settings *ServerConfig, target, user string) {
+	send_irc(settings.Name, target, target+", Check your private messages. Sending you my usage instructions.")
+
+	for _, v := range strings.Split(Help, "\n") {
+		send_irc(settings.Name, user, v)
+	}
+}
+
+func sendTopicHelp(settings *ServerConfig, target, user string) {
+	send_irc(settings.Name, target, target+", Check your private messages. Sending you help about the topic CTF challenge.")
+	for _, v := range strings.Split(TopicHelp, "\n") {
+		send_irc(settings.Name, user, v)
+	}
 }

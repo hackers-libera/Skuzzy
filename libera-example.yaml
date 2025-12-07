@@ -8,6 +8,7 @@ nickservpassword: 'changeme'
 sys_prompt_global_suffix: 'Your response should be less than 800 characters long.'
 deepseek_api_key: 'changeme'
 server_log_file:  'libera.log'
+ctf_config_path: ctf.yaml
 relay_bots: [relay101,TFG-Discord]
 max_reminders_per_user: 5
 llms:

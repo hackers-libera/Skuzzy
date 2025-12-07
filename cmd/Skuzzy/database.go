@@ -37,9 +37,9 @@ func InitDB(filepath string) error {
 	/* CTF */
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS ctf_scores (
-		user TEXT PRIMARY KEY,
+		id TEXT PRIMARY KEY,
+		user TEXT,
 		level INTEGER NOT NULL DEFAULT 0,
-		attempts INTEGER NOT NULL DEFAULT 0,
 		hints INTEGER NOT NULL DEFAULT 0,
 		last_attempt INTEGER NOT NULL DEFAULT 0
 
@@ -52,7 +52,7 @@ func InitDB(filepath string) error {
 	/* Reminders. */
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS reminders (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id TGXT PRIMARY KEY AUTOINCREMENT,
 		server TEXT NOT NULL,
 		channel TEXT NOT NULL,
 		user TEXT NOT NULL,
@@ -147,7 +147,8 @@ func RegexScores(server string, channel string, oldest int) map[string]int {
 			log.Printf("[RegexScores] Error reading row:%v\n", err)
 			break
 		}
-		if (int(time.Now().Unix()) - last_attempt) > oldest {
+		now := int(time.Now().Unix()) - last_attempt
+		if now > oldest {
 			log.Printf("[RegexScores] Skipping user/score %s/%d, because %d is more than %s seconds old\n", user, score, last_attempt, oldest)
 			continue
 		}
@@ -219,4 +220,127 @@ func GetPreference(server, channel, user, preference string) string {
 		}
 	}
 	return result
+}
+
+func CTFSolved(settings *ServerConfig, ctfname string, ctf CTF, user string) {
+	channel := strings.ToLower(ctf.Channel)
+	server := strings.ToLower(settings.Name)
+	user = strings.ToLower(user)
+
+	_id := server + "/" + channel + "/" + user
+	if !CleanUser.MatchString(user) {
+		log.Printf("[CTFSolved] Warning, unable to update CTF level for user %s, bad characters in the user name\n", user)
+	}
+	var level int
+	var hints int
+	err := DB.QueryRow("SELECT level,hints FROM ctf_scores WHERE id = ?", _id).Scan(&level, &hints)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[CTFSolved] No user found with ID %d\n", user)
+		} else {
+			log.Printf("[CTFSolved] Warning, unexpected error when searching for user in db:%v\n", err)
+			return
+		}
+	}
+	log.Printf("Level to update:%d/%d\n", ctf.Level, level)
+	if level != (ctf.Level - 1) {
+		log.Printf("[CTFSolved] %s is at level %v which is not the level right before the currently solved level:%v\n", user, level, ctf.Level)
+		return
+	}
+
+	statement, err := DB.Prepare("INSERT OR REPLACE INTO ctf_scores (id,user, level,hints, last_attempt) VALUES (?,?, ?, ?, ?)")
+	if err != nil {
+		log.Printf("[CTFSolved] Error, unable to prepare statement for updating %s's level:%v\n", user, err)
+		return
+	}
+	defer statement.Close()
+
+	_, err = statement.Exec(_id, user, ctf.Level, hints, int(time.Now().Unix()))
+	if err != nil {
+		log.Printf("[CTFSolved] Error, unable to Execute statement for updating %s's level:%v\n", user, err)
+		return
+	}
+	log.Printf("[CTFSolved] Updated %s's level with %d\n", user, ctf.Level)
+}
+
+func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
+	channel := strings.ToLower(ctf.Channel)
+	server := strings.ToLower(settings.Name)
+	user = strings.ToLower(user)
+
+	_id := server + "/" + channel + "/" + user
+	if !CleanUser.MatchString(user) {
+		log.Printf("[CTFHintTaken] Warning, unable to update CTF level for user %s, bad characters in the user name\n", user)
+	}
+	var hints int
+	err := DB.QueryRow("SELECT hints FROM ctf_scores WHERE id = ?", _id).Scan(&hints)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[CTFHintTaken] No user found with ID %d\n", user)
+		} else {
+			log.Printf("[CTFHintTaken] Warning, unexpected error when searching for user in db:%v\n", err)
+			return
+		}
+	}
+	log.Printf("hints to update:%d\n", hints)
+	hints += 1
+
+	statement, err := DB.Prepare("INSERT OR REPLACE INTO ctf_scores (id,user, hints) VALUES (?,?, ?)")
+	if err != nil {
+		log.Printf("[CTFHintTaken] Error, unable to prepare statement for updating %s's hints:%v\n", user, err)
+		return
+	}
+	defer statement.Close()
+
+	_, err = statement.Exec(_id, user, hints)
+	if err != nil {
+		log.Printf("[CTFHintTaken] Error, unable to Execute statement for updating %s's hints:%v\n", user, err)
+		return
+	}
+	log.Printf("[CTFHintTaken] Updated %s's hints with %d\n", user, hints)
+}
+
+func CTFScores(server string, channel string) map[string]string {
+	channel = strings.ToLower(channel)
+	server = strings.ToLower(server)
+
+	var scores = make(map[string]string)
+	id := fmt.Sprintf("%s/%s/", server, channel)
+	id = id + "%"
+	rows, err := DB.Query("SELECT user, level, hints, last_attempt FROM ctf_scores WHERE id LIKE ?", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[CTFScores] No rows in the ctf  scores table")
+			return scores
+		} else {
+			log.Printf("[CTFScores] Warning, unexpected error when searching for ctf scores:%v\n", err)
+			return scores
+		}
+	}
+	defer rows.Close()
+
+	var user string
+	var level int
+	var hints int
+	var last_attempt int
+
+	for rows.Next() {
+		err := rows.Scan(&user, &level, &hints, &last_attempt)
+		if err != nil {
+			log.Printf("[CTFScores] Error reading row:%v\n", err)
+			break
+		}
+
+		/*
+			Let's do something with last attempt in the future, leaving this uncommented for now.
+			now := int(time.Now().Unix()) - last_attempt
+			if now > oldest {
+				log.Printf("[CTFScores] Skipping user/score %s/%d, because %d is more than %s seconds old\n", user, score, last_attempt, oldest)
+				continue
+			}*/
+		points := (level * 100) - (hints * 10)
+		scores[user] = fmt.Sprintf("%d (Level %d)", points, level)
+	}
+
+	return scores
 }

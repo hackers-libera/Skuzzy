@@ -73,7 +73,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 	if challenge, ok := RegexChallengeChannels[req.Server+"/"+req.Channel]; ok {
 		rex := strings.TrimRight(strings.TrimLeft(strings.TrimSpace(response), `/`), `/`)
 		newRegex, err := regexp.Compile(rex)
-		if err != nil || len(rex) > 380 {
+		if err != nil || len(rex) > 380 || strings.Contains(rex, "\n") {
 			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n%v\n", response, err)
 			_, text := FindPrompt(challenge.settings, "deepseek", req.Channel, "", "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
