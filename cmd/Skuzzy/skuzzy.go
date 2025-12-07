@@ -12,7 +12,7 @@ import (
 var Help = `
 Help about the commands I support is organized in the format of 'Command - Description'
 General commands:
-@topic - Send help message about solving the topic
+!topic - Send help message about solving the topic
 !help - Send this help message
 CTF Challenge:
 !ctf_scores - Display the CTF score stats for the channel
@@ -35,8 +35,8 @@ DO NOT use AI or LLM tools to solve the topic.
 Be ready to explain your solution and thinking process.
 When you figure out the whole thing, send your response to me directly, I will check if that matches the expected answer and post a message congartulating you in the channel.
 When an OP is around, they will ask you questions about your solution and add you to the #hackers libera community.
-You can request hints by typing the hint name such as '@hint1', '@hint2' and '@hint3' is directly to me or in the channel.
-Each attempt to get a hint will cost you 10 points out of a maximum of 100 points for the topic challenge (level 1). So messaging '@hint1' twice will cost you 20 points, and your final point will be 80 points.
+You can request hints by typing the hint name such as '!hint1', '!hint2' and '!hint3', directly to me or in the channel.
+Each attempt to get a hint will cost you 10 points out of a maximum of 100 points for the topic challenge (level 1). So messaging '!hint1' twice will cost you 20 points, and your final point will be 80 points.
 Being part of the #hackers libera community means:
 - You get +V privileges (cosmetic, unless we enable moderation in times of spam)
 - You can send OPs your Github id to get an invite to our Github community (commit access to repos, access to create your own repos,etc..)
