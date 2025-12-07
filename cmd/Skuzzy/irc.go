@@ -70,7 +70,9 @@ func send_irc(server string, channel string, message string) {
 }
 
 func send_irc_raw(conn Connection, msg string) {
-	if len(msg) < 1 {return}
+	if len(msg) < 1 {
+		return
+	}
 	_, err := conn.cx.Write([]byte(msg))
 	if err != nil {
 		log.Printf("Failed to send IRC message:%v\nError:%v\n", msg, err)
