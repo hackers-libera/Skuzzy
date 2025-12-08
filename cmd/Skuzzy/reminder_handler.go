@@ -35,7 +35,7 @@ func ReminderHandler(settings *ServerConfig) {
 		var result ReminderParseResult
 		err := json.Unmarshal([]byte(parsedData.Result), &result)
 		if err != nil {
-			log.Printf("Error parsing reminder JSON from LLM: %v", err)
+			log.Printf("Error parsing reminder JSON from LLM: %v\nData:%v", err, string(parsedData.Result))
 			requeueAsChat(settings, parsedData.OriginalReq)
 			continue
 		}

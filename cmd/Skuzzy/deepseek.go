@@ -39,14 +39,14 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 	case "deepseekchat":
 		model = deepseek.DeepSeekChat
 	default:
-		log.Printf("Error, usupported deepseek model %s\n", llm.Model)
+		log.Printf("[Deepseek] Error, usupported deepseek model %s\n", llm.Model)
 	}
 	client := deepseek.NewClient(settings.DeepseekAPIKey)
 	for {
 		req := <-DeepseekQueue
-		log.Printf("Deepseek processing query [%s]: %v\n", llm.Name, req)
+		log.Printf("[Deepseek]  Deepseek processing query [%s]: %v\n", llm.Name, req)
 		if req.reload {
-			log.Printf("Reloading sys prompts\n")
+			log.Printf("[Deepseek]  Reloading sys prompts\n")
 			LoadSysPrompts(settings)
 		}
 
@@ -58,7 +58,7 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		} else if req.PromptName == "reminder_change_parse" {
 			currentSysPrompt = settings.SysPrompts["reminder_change_parse"]
 		}
-
+		log.Printf("[Deepseek] System prompt:%s\n", currentSysPrompt)
 		request := &deepseek.ChatCompletionRequest{
 			Model: model,
 			Messages: []deepseek.ChatCompletionMessage{
@@ -71,7 +71,7 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 		ctx := context.Background()
 		response, err := client.CreateChatCompletion(ctx, request)
 		if err != nil {
-			log.Printf("Deepseek chat completion request returned an error: %v", err)
+			log.Printf("[Deepseek] Deepseek chat completion request returned an error: %v", err)
 			continue
 		}
 
@@ -82,11 +82,11 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 				OriginalReq DeepseekRequest
 			}{Result: deepseek_response, OriginalReq: req}
 		} else if strings.EqualFold(req.OriginalQuery, "regex\nchallenge") {
-			log.Printf("Regex challenge response:%s\n", deepseek_response)
+			log.Printf("[Deepseek] Regex challenge response:%s\n", deepseek_response)
 			go NewRegexChallenge(req, deepseek_response)
 
 		} else {
-			log.Printf("Deepseek response:%s\n", deepseek_response)
+			log.Printf("[Deepseek] Deepseek response:%s\n", deepseek_response)
 			send_irc(settings.Name, req.Channel, deepseek_response)
 		}
 	}
