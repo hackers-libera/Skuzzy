@@ -52,7 +52,7 @@ func InitDB(filepath string) error {
 	/* Reminders. */
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS reminders (
-		id TGXT PRIMARY KEY AUTOINCREMENT,
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		server TEXT NOT NULL,
 		channel TEXT NOT NULL,
 		user TEXT NOT NULL,
