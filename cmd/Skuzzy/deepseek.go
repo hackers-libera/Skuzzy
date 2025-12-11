@@ -52,10 +52,11 @@ func Deepseek(settings *ServerConfig, llm LLM) {
 
 		/* Determine sysprompt to use based on PromptName. */
 		currentSysPrompt := req.sysprompt
-		if req.PromptName == "reminder_parse" {
+		switch req.PromptName {
+		case "reminder_parse":
 			/* Specific prompt for parsing reminders. */
 			currentSysPrompt = settings.SysPrompts["reminder_parse"]
-		} else if req.PromptName == "reminder_change_parse" {
+		case "reminder_change_parse":
 			currentSysPrompt = settings.SysPrompts["reminder_change_parse"]
 		}
 		log.Printf("[Deepseek] System prompt:%s\n", currentSysPrompt)

@@ -247,13 +247,12 @@ func irc_loop(settings *ServerConfig) {
 					} else if words[1] == "PRIVMSG" && words_len >= 3 {
 						from_channel := ""
 						query := strings.TrimLeft(strings.Join(words[3:], " "), ":")
-						_query := query
 						user := strings.TrimLeft(words[0], ":")
 
 						user = strings.Split(user, "!")[0]
 						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
 
-						uer, query := BridgeUser(query, user, settings.RelayBots)
+						user, query = BridgeUser(query, user, settings)
 
 						llm := ""
 						var channel *ChannelConfig
@@ -481,7 +480,6 @@ func ParsePreferences(server, channel, user, query string) string {
 var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
 
 func BridgeUser(query, user string, settings *ServerConfig) (string, string) {
-	found_user := ""
 	matches := rBridge.FindAllStringSubmatch(query, -1)
 	log.Printf("[BridgeUser] Debug:%s\n", query)
 	for _, match := range matches {

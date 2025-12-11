@@ -16,7 +16,7 @@ var DB *sql.DB
 func InitDB(filepath string) error {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
-		return fmt.Errorf("Failed to open database: %w", err)
+		return fmt.Errorf("failed to open database: %w", err)
 	}
 
 	/* Regex challenge */
@@ -31,7 +31,7 @@ func InitDB(filepath string) error {
 		);
 	`)
 	if err != nil {
-		return fmt.Errorf("Failed to create regex_challenge_scores table: %w", err)
+		return fmt.Errorf("failed to create regex_challenge_scores table: %w", err)
 	}
 
 	/* CTF */
@@ -46,7 +46,7 @@ func InitDB(filepath string) error {
 		);
 	`)
 	if err != nil {
-		return fmt.Errorf("Failed to create ctf_scores table: %w", err)
+		return fmt.Errorf("failed to create ctf_scores table: %w", err)
 	}
 
 	/* Reminders. */
@@ -61,7 +61,7 @@ func InitDB(filepath string) error {
 		);
 	`)
 	if err != nil {
-		return fmt.Errorf("Failed to create reminders table: %w", err)
+		return fmt.Errorf("failed to create reminders table: %w", err)
 	}
 
 	/* Preferences. */
@@ -96,7 +96,7 @@ func RegexSolved(server string, channel string, user string, points int) {
 	err := DB.QueryRow("SELECT score FROM regex_challenge_scores WHERE id = ?", _id).Scan(&score)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("No user found with ID %d\n", user)
+			log.Printf("No user found with ID %v\n", user)
 		} else {
 			log.Printf("[RegexSolved] Warning, unexpected error when searching for user in db:%v\n", err)
 			return
@@ -149,7 +149,7 @@ func RegexScores(server string, channel string, oldest int) map[string]int {
 		}
 		now := int(time.Now().Unix()) - last_attempt
 		if now > oldest {
-			log.Printf("[RegexScores] Skipping user/score %s/%d, because %d is more than %s seconds old\n", user, score, last_attempt, oldest)
+			log.Printf("[RegexScores] Skipping user/score %s/%d, because %d is more than %v seconds old\n", user, score, last_attempt, oldest)
 			continue
 		}
 		scores[user] = score
@@ -236,7 +236,7 @@ func CTFSolved(settings *ServerConfig, ctfname string, ctf CTF, user string) {
 	err := DB.QueryRow("SELECT level,hints FROM ctf_scores WHERE id = ?", _id).Scan(&level, &hints)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("[CTFSolved] No user found with ID %d\n", user)
+			log.Printf("[CTFSolved] No user found with ID %s\n", user)
 		} else {
 			log.Printf("[CTFSolved] Warning, unexpected error when searching for user in db:%v\n", err)
 			return
@@ -276,7 +276,7 @@ func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
 	err := DB.QueryRow("SELECT hints FROM ctf_scores WHERE id = ?", _id).Scan(&hints)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("[CTFHintTaken] No user found with ID %d\n", user)
+			log.Printf("[CTFHintTaken] No user found with ID %s\n", user)
 		} else {
 			log.Printf("[CTFHintTaken] Warning, unexpected error when searching for user in db:%v\n", err)
 			return

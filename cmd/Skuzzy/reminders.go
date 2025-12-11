@@ -42,7 +42,7 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) error {
 	if err != nil {
 		if err != sql.ErrNoRows {
 			log.Printf("Error counting reminders for user %s: %v", reminder.User, err)
-			return fmt.Errorf("Failed to count existing reminders: %w", err)
+			return fmt.Errorf("failed to count existing reminders: %w", err)
 		}
 	}
 	if userReminderCount >= settings.MaxRemindersPerUser {
@@ -58,11 +58,11 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) error {
 		"VALUES (?, ?, ?, ?, ?)", reminder.Server, reminder.Channel, reminder.User, reminder.Message,
 		reminder.EndTime.Unix())
 	if err != nil {
-		return fmt.Errorf("Failed to insert reminder into DB: %w", err)
+		return fmt.Errorf("failed to insert reminder into DB: %w", err)
 	}
 	lastID, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("Failed to get last insert ID for reminder: %w", err)
+		return fmt.Errorf("failed to get last insert ID for reminder: %w", err)
 	}
 	reminder.ID = int(lastID)
 
@@ -196,7 +196,7 @@ func LoadReminders(settings *ServerConfig) error {
 		if err == sql.ErrNoRows {
 			return nil /* No reminders to load. */
 		}
-		return fmt.Errorf("Failed to query reminders: %w", err)
+		return fmt.Errorf("failed to query reminders: %w", err)
 	}
 	defer rows.Close()
 
