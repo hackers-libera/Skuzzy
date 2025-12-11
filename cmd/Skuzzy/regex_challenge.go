@@ -30,7 +30,7 @@ var RegexChallengeChannels = make(map[string]RegexChallenge)
 
 var maxSleep = (3600 * 6)
 
-func chalelngePrompt(previous string) string {
+func challengePrompt(previous string) string {
 	//word := babbler.Babble()
 	return fmt.Sprintf(`Respond with a regular expression that is difficult and complex. The regular expression should be very different compared to:%s`, previous)
 }
@@ -48,7 +48,7 @@ func RegexChallengeWorker() {
 					Channel:       v.Channel,
 					Server:        v.settings.Name,
 					sysprompt:     text,
-					request:       chalelngePrompt(v.RegexText),
+					request:       challengePrompt(v.RegexText),
 					reload:        false,
 					reset:         false,
 					OriginalQuery: "regex\nchallenge",
@@ -82,7 +82,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 				Channel:       req.Channel,
 				Server:        req.Server,
 				sysprompt:     text,
-				request:       chalelngePrompt(challenge.RegexText),
+				request:       challengePrompt(challenge.RegexText),
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -152,7 +152,7 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 				Channel:       channel,
 				Server:        server,
 				sysprompt:     text,
-				request:       chalelngePrompt(challenge.RegexText),
+				request:       challengePrompt(challenge.RegexText),
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -237,7 +237,7 @@ func NextRegexChallenge(Server string, Channel string, user string) {
 			Channel:       Channel,
 			Server:        Server,
 			sysprompt:     text,
-			request:       chalelngePrompt(challenge.RegexText),
+			request:       challengePrompt(challenge.RegexText),
 			reload:        false,
 			reset:         false,
 			OriginalQuery: "regex\nchallenge",

@@ -212,7 +212,7 @@ func irc_loop(settings *ServerConfig) {
 						log.Printf("SASL authentication has failed!")
 						breakout = true
 					} else if words[1] == "903" {
-						log.Printf("SASL authentication succesful")
+						log.Printf("SASL authentication successful")
 						send_irc_raw(Connections[settings.Name], "CAP END\r\n")
 
 						send_irc_raw(Connections[settings.Name], fmt.Sprintf("NICK %s\r\n", settings.Nick))

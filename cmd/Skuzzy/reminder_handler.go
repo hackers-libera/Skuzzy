@@ -89,7 +89,7 @@ func ReminderHandler(settings *ServerConfig) {
 
 			send_irc(parsedData.OriginalReq.Server, parsedData.OriginalReq.Channel, response)
 		} else {
-			log.Printf("Unkown prompt name received in ReminderHandler: %s",
+			log.Printf("Unknown prompt name received in ReminderHandler: %s",
 				parsedData.OriginalReq.PromptName)
 			requeueAsChat(settings, parsedData.OriginalReq) /* Fallback to chat. */
 		}

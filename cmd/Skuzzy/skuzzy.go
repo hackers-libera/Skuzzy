@@ -24,10 +24,7 @@ Regex Challenge
 LLM commands:
 <botname>, - A message starting with the bot's nick and a separator (such as a comma or a colon) will initiate a chat-completion session.
 <botname>, @@sysprompt=default - An LLM query containing this will cause the bot to load the prompt after '=' and remember that prompt for the user.
-<botname>, remind|reminder + time in whole minutes ... - include remind|reminder + a time in whole minutes in your prompt to set a reminder.
-<botname>, list reminders|my reminders - Include any of these in your prompt to be shown your active reminders.
-<botname>, delete reminder <ID> - Delete a reminder by its ID.
-<botnmae>, change reminder <ID> <new message> <new duration> - Include these in your prompt to adjust your reminder.
+<botname>, remind me ... - have the LLM remind you of something after some time.
 <botname>, @reload ... - if '@reload' is mentioned in the LLM query, the sys prompt is reloaded (before evaluation)
 <botname>, what's your version? - If the default prompt is enabled, asking it its version will display the current version.
 `
