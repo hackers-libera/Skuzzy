@@ -253,16 +253,8 @@ func irc_loop(settings *ServerConfig) {
 						user = strings.Split(user, "!")[0]
 						/* Handle messages from Discord bridge bots by stripping the <username> prefix. */
 
-						bridge_user, _query := BridgeUser(query)
-						if bridge_user != "" {
-							for _, relay_bot := range settings.RelayBots {
-								if strings.EqualFold(bridge_user, relay_bot) {
-									user = bridge_user
-									query = _query
-									break
-								}
-							}
-						}
+						uer, query := BridgeUser(query, user, settings.RelayBots)
+
 						llm := ""
 						var channel *ChannelConfig
 
@@ -488,16 +480,21 @@ func ParsePreferences(server, channel, user, query string) string {
 
 var rBridge = regexp.MustCompile(`^<([^>]+)>.*$`)
 
-func BridgeUser(query string) (string, string) {
-
+func BridgeUser(query, user string, settings *ServerConfig) (string, string) {
+	found_user := ""
 	matches := rBridge.FindAllStringSubmatch(query, -1)
 	log.Printf("[BridgeUser] Debug:%s\n", query)
 	for _, match := range matches {
 		log.Printf("[BridgeUser] Found [%s]:%s\n", match[1], match[0])
-		return match[1], strings.TrimSpace(strings.Replace(query, "<"+match[1]+">", "", -1))
+		for _, relay_bot := range settings.RelayBots {
+			if strings.EqualFold(match[1], relay_bot) {
+				return match[1], strings.TrimSpace(strings.Replace(query, "<"+match[1]+">", "", -1))
+			}
+		}
 
 	}
-	return "", query
+
+	return user, query
 
 }
 
