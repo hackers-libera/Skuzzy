@@ -299,3 +299,94 @@ func ChangeReminder(settings *ServerConfig, user string, id int, newMessage stri
 	return fmt.Sprintf("%s: Reminder ID %d has been updated. New Message: \"%s\", due in %s",
 		user, id, r.Message, formatDuration(time.Until(r.EndTime)))
 }
+
+/* Retrieve active reminders for all users. */
+func ListAllReminders() string {
+	ReminderMutex.RLock()
+	defer ReminderMutex.RUnlock()
+
+	rows, err := DB.Query("SELECT id, user, message, end_time, server, channel " +
+		"FROM reminders ORDER BY end_time ASC")
+	if err != nil {
+		log.Printf("Error listing all reminders: %v", err)
+		return "Error retrieving reminders."
+	}
+	defer rows.Close()
+
+	var reminders []Reminder
+	for rows.Next() {
+		var r Reminder
+		var endtimeUnix int64
+		if err := rows.Scan(&r.ID, &r.User, &r.Message, &endtimeUnix, &r.Server,
+			&r.Channel); err != nil {
+			log.Printf("Error scaning reminder row: %v", err)
+			continue
+		}
+		r.EndTime = time.Unix(endtimeUnix, 0)
+		reminders = append(reminders, r)
+	}
+
+	if len(reminders) == 0 {
+		return "No active reminders."
+	}
+
+	var response strings.Builder
+	response.WriteString("All active reminders:\n")
+	for _, r := range reminders {
+		timeRemaining := time.Until(r.EndTime)
+		response.WriteString(fmt.Sprintf("	ID: %d, User: %s, Server: %s, "+
+			" Channel: %s, Message: \"%s\" (in %s)\n",
+			r.ID, r.User, r.Server, r.Channel, r.Message, formatDuration(timeRemaining)))
+	}
+	return response.String()
+}
+
+/* Admin delete reminder by ID from db and stop its timer. */
+func AdminDeleteReminder(id int) string {
+	ReminderMutex.Lock()
+	defer ReminderMutex.Unlock()
+
+	var reminderMessage string
+	err := DB.QueryRow("SELECT message FROM reminders WHERE id = ?", id).Scan(&reminderMessage)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Sprintf("No reminder found with ID %d.", id)
+		}
+		log.Printf("Error querying reminder ID %d: %v", id, err)
+		return fmt.Sprintf("Error deleting reminder ID %d.", id)
+	}
+
+	/* Stop associated timer. */
+	if timer, ok := activeTimers[id]; ok {
+		timer.Stop()
+		delete(activeTimers, id)
+	}
+
+	/* Delete from db. */
+	if _, err := DB.Exec("DELETE FROM reminders WHERE id = ?", id); err != nil {
+		log.Printf("Error deleting ID %d from DB: %v", id, err)
+		return fmt.Sprintf("Error deleting reminder ID %d", id)
+	}
+	log.Printf("Admin deleted reminder ID %d: %s", id, reminderMessage)
+	return fmt.Sprintf("Reminder ID %d (\"%s\") has been deleted.", id, reminderMessage)
+}
+
+/* Purge all reminders from the database. */
+func PurgeAllReminders() string {
+	ReminderMutex.Lock()
+	defer ReminderMutex.Unlock()
+
+	/* Stop all active timers. */
+	for id, timer := range activeTimers {
+		timer.Stop()
+		delete(activeTimers, id)
+	}
+
+	/* Delete all reminders from db. */
+	if _, err := DB.Exec("DELETE FROM reminders"); err != nil {
+		log.Printf("Error purging reminders from DB: %v", err)
+		return "Error purging reminders."
+	}
+	log.Println("Admin purging all reminders.")
+	return "All reminders have been purged."
+}
