@@ -66,7 +66,6 @@ func ServerRun(settings *ServerConfig) {
 	log.Printf("Connecting to %s (%s)\n", settings.Name, settings.Host)
 	err := irc_connect(settings)
 	if err != nil {
-
 		log.Printf("Error connecting to %s (%s):%v\nReconnecting in 5 seconds...", settings.Name, settings.Host, err)
 		return
 	}

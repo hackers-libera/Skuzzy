@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -16,12 +17,15 @@ var InteractQueue = make(chan string)
 const help_string = `
 Usage:
 
-/quit 			Exit program
-/help 			Print this message
-/server			Switch to server, e.g.: /Server libera
-/channel		Switch to channel, e.g.: /Channel #hackers
-/info			Display information about the current server and channel
-/interactive	turn interactive mode on or off
+/quit                             Exit program
+/help                             Print this message
+/server                           Switch to server, e.g.: /Server libera
+/channel                          Switch to channel, e.g.: /Channel #hackers
+/info                             Display information about the current server and channel
+/interactive                      Turn interactive mode on or off
+/admin reminders list             List all active reminders 
+/admin reminders delete <id>      Delete a reminder by ID
+/admin reminders purge            Delete all reminders
 `
 
 func interact(socketPath string) {
@@ -73,10 +77,45 @@ func interact_triage(_input string, conn *net.UnixConn) {
 			if Interactive {
 				Interactive = false
 				conn.Write([]byte(fmt.Sprintf("Interactive mode turned off\n")))
-
 			} else {
 				Interactive = true
 				conn.Write([]byte(fmt.Sprintf("Interactive mode turned on\n")))
+			}
+		case "/admin":
+			parts := strings.Split(input, " ")
+			if len(parts) < 2 {
+				conn.Write([]byte("Usage: /admin <command>\n"))
+				return
+			}
+			adminCommand := parts[1]
+			switch adminCommand {
+			case "reminders":
+				if len(parts) < 3 {
+					conn.Write([]byte("Usage: /admin reminders <list|delete|purge>\n"))
+					return
+				}
+				reminderSubcommand := parts[2]
+				switch reminderSubcommand {
+				case "list":
+					conn.Write([]byte(ListAllReminders() + "\n"))
+				case "delete":
+					if len(parts) < 4 {
+						conn.Write([]byte("Usage: /admin reminders delete <id>\n"))
+						return
+					}
+					id, err := strconv.Atoi(parts[3])
+					if err != nil {
+						conn.Write([]byte("Invalid reminder ID.\n"))
+						return
+					}
+					conn.Write([]byte(AdminDeleteReminder(id) + "\n"))
+				case "purge":
+					conn.Write([]byte(PurgeAllReminders() + "\n"))
+				default:
+					conn.Write([]byte(fmt.Sprintf("Unknown admin reminders command: '%s'\n", reminderSubcommand)))
+				}
+			default:
+				conn.Write([]byte(fmt.Sprintf("Unknown admin command: '%s'\n", adminCommand)))
 			}
 		default:
 			conn.Write([]byte(fmt.Sprintf("Unknown command:'%v'\n", input)))
