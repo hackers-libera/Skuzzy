@@ -296,11 +296,11 @@ func irc_loop(settings *ServerConfig) {
 								SendRegexScores(settings.Name, from_channel)
 								continue
 							}
-							if strings.EqualFold(query, "!next regex") || strings.EqualFold(query, "!next_regex"){
+							if strings.EqualFold(query, "!next regex") || strings.EqualFold(query, "!next_regex") {
 								NextRegexChallenge(settings.Name, from_channel, user)
 								continue
 							}
-							if strings.EqualFold(query, "!last regex") || strings.EqualFold(query, "!last_regex"){
+							if strings.EqualFold(query, "!last regex") || strings.EqualFold(query, "!last_regex") {
 								LastRegexChallenge(settings.Name, from_channel, user)
 								continue
 							}
@@ -318,12 +318,18 @@ func irc_loop(settings *ServerConfig) {
 											break
 										}
 									}
+									if strings.EqualFold("!"+k, query) && len(ctf.Description) > 0 {
+										send_irc(settings.Name, from_channel, "Check your private messages "+user+", I just sent you the description for "+k+".")
+
+										send_irc(settings.Name, user, ctf.Description)
+									}
 								}
 								if strings.EqualFold(query, "!ctf_scores") {
 									SendCTFScores(settings.Name, from_channel)
 
 								}
 							}
+
 						} else if strings.EqualFold(settings.Nick, words[2]) {
 							handlePM(settings, user, query)
 							continue
@@ -501,25 +507,25 @@ func BridgeUser(query, user string, settings *ServerConfig) (string, string) {
 }
 
 func reloadCTFConfig(settings *ServerConfig) {
-	    ctfconfig, err := LoadCTFConfig(settings.CtfConfigPath)
-		if err == nil {
-			cx := Connections[settings.Name]
-			cx.CTF = ctfconfig
-			Connections[settings.Name] = cx
-		} else {
-			log.Printf("[reloadCTFConfig] Error reloading CTF config:%v\n",err)
-		}
+	ctfconfig, err := LoadCTFConfig(settings.CtfConfigPath)
+	if err == nil {
+		cx := Connections[settings.Name]
+		cx.CTF = ctfconfig
+		Connections[settings.Name] = cx
+	} else {
+		log.Printf("[reloadCTFConfig] Error reloading CTF config:%v\n", err)
+	}
 }
 
 func handlePM(settings *ServerConfig, user, query string) {
 
 	if strings.HasSuffix(query, "help") {
 		sendHelp(settings, user, user)
-	}
-	if strings.HasSuffix(query, "topic") {
+	} else if strings.HasSuffix(query, "topic") {
 		sendTopicHelp(settings, user, user)
 	}
 	reloadCTFConfig(settings)
+
 	if Connections[settings.Name].CTF != nil {
 		for k, ctf := range Connections[settings.Name].CTF.CTFFlags {
 			if strings.EqualFold(query, ctf.Flag) {
@@ -529,10 +535,13 @@ func handlePM(settings *ServerConfig, user, query string) {
 				send_irc(settings.Name, ctf.Channel, solve_message)
 			}
 			for hintname, hint := range ctf.Hints {
-				if strings.EqualFold("!"+hintname, query) {
+				if strings.EqualFold("!"+hintname, query) || strings.EqualFold(hintname, query) {
 					send_irc(settings.Name, user, hint)
 					CTFHintTaken(settings, ctf, user)
 				}
+			}
+			if (strings.EqualFold(k, query) || strings.EqualFold("!"+k, query)) && len(ctf.Description) > 0 {
+				send_irc(settings.Name, user, ctf.Description)
 			}
 		}
 	}

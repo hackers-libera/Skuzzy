@@ -224,13 +224,13 @@ func SendRegexScores(Server string, Channel string) {
 }
 
 func LastRegexChallenge(Server string, Channel string, user string) {
-user = strings.ToLower(user)
+	user = strings.ToLower(user)
 	if challenge, ok := RegexChallengeChannels[Server+"/"+Channel]; ok {
-       if !challenge.Active {
-       	   send_irc(Server,Channel,user+", there is currently no active regex challenge.")
-       }else {
-       	send_irc(Server,Channel,user+", the current regex challenge is:`"+channel.RegexText+"`")
-       }
+		if !challenge.Active {
+			send_irc(Server, Channel, user+", there is currently no active regex challenge.")
+		} else {
+			send_irc(Server, Channel, user+", the current regex challenge is:`"+channel.RegexText+"`")
+		}
 	}
 }
 
