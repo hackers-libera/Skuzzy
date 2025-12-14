@@ -496,6 +496,17 @@ func BridgeUser(query, user string, settings *ServerConfig) (string, string) {
 
 }
 
+func reloadCTFConfig(settings *ServerConfig) {
+	    ctfconfig, err := LoadCTFConfig(settings.CtfConfigPath)
+		if err == nil {
+			cx := Connections[settings.Name]
+			cx.CTF = ctfconfig
+			Connections[settings.Name] = cx
+		} else {
+			log.Printf("[reloadCTFConfig] Error reloading CTF config:%v\n",err)
+		}
+}
+
 func handlePM(settings *ServerConfig, user, query string) {
 
 	if strings.HasSuffix(query, "help") {
@@ -504,6 +515,7 @@ func handlePM(settings *ServerConfig, user, query string) {
 	if strings.HasSuffix(query, "topic") {
 		sendTopicHelp(settings, user, user)
 	}
+	reloadCTFConfig(settings)
 	if Connections[settings.Name].CTF != nil {
 		for k, ctf := range Connections[settings.Name].CTF.CTFFlags {
 			if strings.EqualFold(query, ctf.Flag) {
