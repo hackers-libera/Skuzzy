@@ -292,12 +292,16 @@ func irc_loop(settings *ServerConfig) {
 							} else {
 								log.Printf("Debug: query has NO double quotes:[%s]\n", query)
 							}
-							if strings.EqualFold(query, "!regex scores") {
+							if strings.EqualFold(query, "!regex scores") || strings.EqualFold(query, "!regex_scores") {
 								SendRegexScores(settings.Name, from_channel)
 								continue
 							}
-							if strings.EqualFold(query, "!next regex") {
+							if strings.EqualFold(query, "!next regex") || strings.EqualFold(query, "!next_regex"){
 								NextRegexChallenge(settings.Name, from_channel, user)
+								continue
+							}
+							if strings.EqualFold(query, "!last regex") || strings.EqualFold(query, "!last_regex"){
+								LastRegexChallenge(settings.Name, from_channel, user)
 								continue
 							}
 							if strings.Contains(query, "@@") {
