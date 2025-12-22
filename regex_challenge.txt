@@ -7,4 +7,5 @@ Attempt to match specific types of text at random, for example matching an ipv4 
 The regular expression should not contain more than one positive look-ahead.
 The regular expression should not contain more than tow negative look-aheads.
 Your response should be the regular expression and nothing more.
+Generate a sample string that would match the regular expression you came up with, but don't include the sample string in your response.
 Do not add descriptions, commentary or any other content other than the regular expression string. Your response must always begin and end with a /
