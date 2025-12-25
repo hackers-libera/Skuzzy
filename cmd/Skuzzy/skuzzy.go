@@ -12,8 +12,9 @@ import (
 var Help = `
 Help about the commands I support is organized in the format of 'Command - Description'
 General commands:
-!topic - Send help message about solving the topic
 !help - Send this help message
+!topic, !topic_challenge - Send help message about solving the topic
+!doors_and_corners - Send a help message about solving the "doors and corners" (level 2) challenge
 CTF Challenge:
 !ctf_scores - Display the CTF score stats for the channel
 !<hintname> - Display CTF hints (will be sent to your pirvate messages)
@@ -22,11 +23,12 @@ Regex Challenge
 !next regex - Take a -50 point hint and generate a new challenge
 !reges scores - Display regex challenge score stats
 LLM commands:
-<botname>, - A message starting with the bot's nick and a separator (such as a comma or a colon) will initiate a chat-completion session.
-<botname>, @@sysprompt=default - An LLM query containing this will cause the bot to load the prompt after '=' and remember that prompt for the user.
-<botname>, remind me ... - have the LLM remind you of something after some time.
-<botname>, @reload ... - if '@reload' is mentioned in the LLM query, the sys prompt is reloaded (before evaluation)
-<botname>, what's your version? - If the default prompt is enabled, asking it its version will display the current version.
+To talk to the bot, either mention it and append a comma, or begin your message with '~~'
+~~|<botname>, - A message starting with the bot's nick and a separator (such as a comma or a colon) will initiate a chat-completion session.
+~~|<botname>, @@sysprompt=default - An LLM query containing this will cause the bot to load the prompt after '=' and remember that prompt for the user.
+~~|<botname>, remind me ... - have the LLM remind you of something after some time.
+~~|<botname>, @reload ... - if '@reload' is mentioned in the LLM query, the sys prompt is reloaded (before evaluation)
+~~|<botname>, what's your version? - If the default prompt is enabled, asking it its version will display the current version.
 `
 
 var TopicHelp = `

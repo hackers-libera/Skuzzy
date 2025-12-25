@@ -229,7 +229,7 @@ func LastRegexChallenge(Server string, Channel string, user string) {
 		if !challenge.Active {
 			send_irc(Server, Channel, user+", there is currently no active regex challenge.")
 		} else {
-			send_irc(Server, Channel, user+", the current regex challenge is:`"+channel.RegexText+"`")
+			send_irc(Server, Channel, user+", the current regex challenge is:`"+challenge.RegexText+"`")
 		}
 	}
 }

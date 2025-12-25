@@ -129,8 +129,8 @@ func CloseConnections() {
 }
 
 func mentioned(nick string, query string) bool {
-	var rMention = regexp.MustCompile(`(?i)^` + nick + `[,:\- ]+`)
-	log.Printf("Mention regex:%s\n", `(?i)^`+nick+`[,:\- ]+`)
+	var rMention = regexp.MustCompile(`^~~|(?i)^` + nick + `[,: ]+`)
+	log.Printf("Mention regex:%s\n", `^~~|(?i)^`+nick+`[,: ]+`)
 	return rMention.MatchString(query)
 }
 

@@ -273,7 +273,8 @@ func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
 		log.Printf("[CTFHintTaken] Warning, unable to update CTF level for user %s, bad characters in the user name\n", user)
 	}
 	var hints int
-	err := DB.QueryRow("SELECT hints FROM ctf_scores WHERE id = ?", _id).Scan(&hints)
+	var level int
+	err := DB.QueryRow("SELECT hints,level FROM ctf_scores WHERE id = ?", _id).Scan(&hints,&level)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("[CTFHintTaken] No user found with ID %s\n", user)
@@ -283,6 +284,7 @@ func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
 		}
 	}
 	log.Printf("hints to update:%d\n", hints)
+	if level/hints > level*3 {}
 	hints += 1
 
 	statement, err := DB.Prepare("INSERT OR REPLACE INTO ctf_scores (id,user, hints) VALUES (?,?, ?)")
