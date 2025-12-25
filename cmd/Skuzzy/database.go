@@ -274,7 +274,7 @@ func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
 	}
 	var hints int
 	var level int
-	err := DB.QueryRow("SELECT hints,level FROM ctf_scores WHERE id = ?", _id).Scan(&hints,&level)
+	err := DB.QueryRow("SELECT hints,level FROM ctf_scores WHERE id = ?", _id).Scan(&hints, &level)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("[CTFHintTaken] No user found with ID %s\n", user)
@@ -284,7 +284,10 @@ func CTFHintTaken(settings *ServerConfig, ctf CTF, user string) {
 		}
 	}
 	log.Printf("hints to update:%d\n", hints)
-	if level/hints > level*3 {}
+	if level/hints > level*3 {
+		log.Printf("[CTFHintTaken] Max hints for user level reached already, not penalizing.")
+		return
+	}
 	hints += 1
 
 	statement, err := DB.Prepare("INSERT OR REPLACE INTO ctf_scores (id,user, hints) VALUES (?,?, ?)")

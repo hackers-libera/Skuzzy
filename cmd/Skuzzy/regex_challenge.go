@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	regexp "github.com/ando-masaki/go-pcre"
-	"github.com/tjarratt/babble"
 	"log"
 	"math/rand"
 	"sort"
@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-var babbler = babble.NewBabbler()
+type NewRegex struct {
+	Regex  string `json:"regex"`
+	Sample string `json:"sample"`
+}
 
 type RegexChallenge struct {
 	settings  *ServerConfig
@@ -31,11 +34,9 @@ var RegexChallengeChannels = make(map[string]RegexChallenge)
 var maxSleep = (3600 * 6)
 
 func challengePrompt(previous string) string {
-	//word := babbler.Babble()
 	return fmt.Sprintf(`Respond with a regular expression that is difficult and complex. The regular expression should be very different compared to:%s`, previous)
 }
 func RegexChallengeWorker() {
-	babbler.Count = 1
 	time.Sleep(30 * time.Second) // Initial sleep while things get set up
 	for {
 		RegexChallengeMutex.Lock()
@@ -69,20 +70,47 @@ func RegexChallengeWorker() {
 
 func NewRegexChallenge(req DeepseekRequest, response string) {
 	RegexChallengeMutex.Lock()
-
+	var jsonResponse NewRegex
+	var newRegex *regexp.Regexp
 	if challenge, ok := RegexChallengeChannels[req.Server+"/"+req.Channel]; ok {
-		rex := strings.TrimRight(strings.TrimLeft(strings.TrimSpace(response), `/`), `/`)
-		newRegex, err := regexp.Compile(rex)
-		if err != nil || len(rex) > 380 || strings.Contains(rex, "\n") {
-			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n%v\n", response, err)
+		goodResponse := false
+		issue := ""
+		response = strings.Replace(response, "```json", "", -1)
+		response = strings.Replace(response, "```", "", -1)
+		err := json.Unmarshal([]byte(response), &jsonResponse)
+		if err != nil {
+			issue = fmt.Sprintf("Bad JSON response, bad Unmarshal`%s`", response)
+		} else if len(jsonResponse.Regex) < 5 || len(jsonResponse.Regex) > 380 {
+			issue = fmt.Sprintf("Bad JSON response, regex is too long or too short`%s`", jsonResponse.Regex)
+		} else if strings.Contains(jsonResponse.Regex, "\n") {
+			issue = fmt.Sprintf("Bad JSON response, regex contains newline`%s`", jsonResponse.Regex)
+		} else if len(jsonResponse.Sample) < 2 {
+			issue = fmt.Sprintf("Bad JSON response, sample string is too short:`%s`", jsonResponse.Sample)
+		} else {
+			goodResponse = true
+		}
+		if goodResponse {
+			goodResponse = false
+			newRegex, err = regexp.Compile(jsonResponse.Regex)
+			if err != nil {
+				issue = fmt.Sprintf("Bad PCRE regular expression, unable to compile `%s`", response)
+			} else if newRegex.MatchString(jsonResponse.Sample) {
+				goodResponse = true
+			} else {
+				issue = fmt.Sprintf("Bad JSON response, regex doesn't match sample:\n```\n%s\n```\n", response)
+			}
+		}
+		if !goodResponse {
+			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n[%v]Issue:%s\n", response, err, issue)
 			_, text := FindPrompt(challenge.settings, "deepseek", req.Channel, "", "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
+			issue = "\nYour previous response was invalid because, " + issue
 			req := DeepseekRequest{
 				Channel:       req.Channel,
 				Server:        req.Server,
 				sysprompt:     text,
-				request:       challengePrompt(challenge.RegexText),
+				request:       challengePrompt(challenge.RegexText) + issue,
 				reload:        false,
 				reset:         false,
 				OriginalQuery: "regex\nchallenge",
@@ -93,11 +121,11 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 		} else {
 			challenge.Regex = newRegex
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
-			log.Printf("[NewRegexChallenge] New regex challenge for [%s/%s], sleeping for %v:%s\n", req.Server, req.Channel, challenge.SleepTime, rex)
+			log.Printf("[NewRegexChallenge] New regex challenge for [%s/%s], sleeping for %v:%s\n", req.Server, req.Channel, challenge.SleepTime, jsonResponse.Regex)
 			time.Sleep(challenge.SleepTime * time.Second)
-			send_irc(req.Server, req.Channel, "Regex Challenge:`"+rex+"`")
+			send_irc(req.Server, req.Channel, "Regex Challenge:`"+jsonResponse.Regex+"`")
 			challenge.Active = true
-			challenge.RegexText = rex
+			challenge.RegexText = jsonResponse.Regex
 			challenge.SleepTime = 0
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
 			RegexChallengeMutex.Unlock()
@@ -130,6 +158,13 @@ func CheckRegexChallenge(server string, channel string, user string, query strin
 			log.Printf("POINTS:%d %d %d\n", maxSleep, int(time.Now().Unix()), int(challenge.Timer))
 			points := maxSleep - int(int(time.Now().Unix())-int(challenge.Timer))
 			points = points / (maxSleep / 100)
+			if points < 1 {
+				// Somehow the point came out to be < 0
+				// as a consolation prize, 50pts is awarded.
+				// Based on the formula above, it was most likely solved
+				// too late.
+				points = 50
+			}
 			points += 1
 			RegexSolved(server, channel, user, points)
 			regex_scores := RegexScores(server, channel, 86400*30)

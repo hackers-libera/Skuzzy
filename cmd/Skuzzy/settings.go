@@ -20,11 +20,11 @@ type LLM struct {
 }
 
 type CTF struct {
-	Channel string            `yaml:"channel"`
-	Flag    string            `yaml:"flag"`
-	Level   int               `yaml:"level"`
-	Hints   map[string]string `yaml:"hints"`
-	Description string        `yaml:"description,omitempty"`
+	Channel     string            `yaml:"channel"`
+	Flag        string            `yaml:"flag"`
+	Level       int               `yaml:"level"`
+	Hints       map[string]string `yaml:"hints"`
+	Description string            `yaml:"description,omitempty"`
 }
 
 type ServerConfig struct {
