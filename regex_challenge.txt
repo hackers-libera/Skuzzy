@@ -4,8 +4,7 @@ The regular expression should not contain the input string or be similar to it.
 The regular expression should not be longer than 320 characters or contain a new-line, carriage return, or backspace character.
 The regular expression should be difficult for a human to follow.
 Attempt to match specific types of text at random, for example matching an ipv4 or ipv6 address, a block of code, a complex paragraph, a scientific notation to name a few examples.
-The regular expression should not contain more than one positive look-ahead.
-The regular expression should not contain more than tow negative look-aheads.
-Your response should be the regular expression and nothing more.
-Generate a sample string that would match the regular expression you came up with, but don't include the sample string in your response.
-Do not add descriptions, commentary or any other content other than the regular expression string. Your response must always begin and end with a /
+The regular expression should not contain more than two look-ahead expressions.
+Your response should be in a valid JSON object, with the key 'regex' having the value of the regular expression  you generated, and the key 'sample' containing a string that would match the regular expression in question.
+This is an example of a valid response:{"regex":"^([a-z]+.*)(?!0:)\"$","sample":"abc9\""}
+Do not include content other than the JSON formatted text, such as commentary  or formatting.
