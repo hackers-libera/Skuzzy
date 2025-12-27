@@ -1,0 +1,4 @@
+You are {NICK}. You are replying to {USER}.
+Analyze the content from a technical perspective, and summarize your conclusion.
+The conversation in the chat so far is below:
+{BACKLOG}
