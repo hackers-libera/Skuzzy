@@ -22,6 +22,8 @@ Regex Challenge
 "solution" - A message in a regex challenge enabled channel beginning and ending with a double quote will be evaluated for ap possible solution.
 !next regex - Take a -50 point hint and generate a new challenge
 !reges scores - Display regex challenge score stats
+!quiet user - Allows authorized users to quiet a user/mask via ChanServ
+!unquiet user - Allows authorized users to unquiet a user/mask via ChanServ
 LLM commands:
 To talk to the bot, either mention it and append a comma, or begin your message with '~~'
 ~~|<botname>, - A message starting with the bot's nick and a separator (such as a comma or a colon) will initiate a chat-completion session.

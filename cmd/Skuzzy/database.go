@@ -349,3 +349,22 @@ func CTFScores(server string, channel string) map[string]string {
 
 	return scores
 }
+
+func CTFUserLevel(server string, channel string, user string) int {
+	channel = strings.ToLower(channel)
+	server = strings.ToLower(server)
+	user = strings.ToLower(user)
+	level := 0
+	id := fmt.Sprintf("%s/%s/%s", server, channel, user)
+	err := DB.QueryRow("SELECT level FROM ctf_scores WHERE id = ?", id).Scan(&level)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[CTFUserLevel] No rows in the ctf  scores table")
+			return level
+		} else {
+			log.Printf("[CTFUserLevel] Warning, unexpected error when searching for ctf scores:%v\n", err)
+			return level
+		}
+	}
+	return level
+}

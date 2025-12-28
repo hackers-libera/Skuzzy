@@ -181,3 +181,24 @@ func HttpsFetch(url string) string {
 	}
 	return string(body)
 }
+
+func HttpGetHead(url string) string {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	response, err := client.Get(url)
+	if err != nil {
+		log.Printf("[HttpGetHead] Error making an https request for %s:%s\n", url, err)
+		return ""
+	}
+	defer response.Body.Close()
+	limitedReader := io.LimitReader(response.Body, 4*1024)
+
+	body, err := io.ReadAll(limitedReader)
+	if len(body) < 1 {
+		log.Printf("[HttpGetHead] No body from url '%s':%v\n", url, err)
+		return ""
+	}
+	return string(body)
+}

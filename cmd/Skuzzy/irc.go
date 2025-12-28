@@ -293,19 +293,27 @@ func irc_loop(settings *ServerConfig) {
 								log.Printf("Debug: query has NO double quotes:[%s]\n", query)
 							}
 							if strings.EqualFold(query, "!regex scores") || strings.EqualFold(query, "!regex_scores") {
-								SendRegexScores(settings.Name, from_channel)
+								go SendRegexScores(settings.Name, from_channel)
 								continue
 							}
 							if strings.EqualFold(query, "!next regex") || strings.EqualFold(query, "!next_regex") {
-								NextRegexChallenge(settings.Name, from_channel, user)
+								go NextRegexChallenge(settings.Name, from_channel, user)
 								continue
 							}
 							if strings.EqualFold(query, "!last regex") || strings.EqualFold(query, "!last_regex") {
-								LastRegexChallenge(settings.Name, from_channel, user)
+								go LastRegexChallenge(settings.Name, from_channel, user)
 								continue
 							}
 							if strings.Contains(query, "@@") {
 								query = ParsePreferences(settings.Name, from_channel, user, query)
+							}
+							if words_len >= 4 && strings.HasPrefix(query, "!quiet ") {
+								go HandleQuietRequest(settings.Name, from_channel, user, words[4])
+								continue
+							}
+							if words_len >= 4 && strings.HasPrefix(query, "!unquiet ") {
+								go HandleUnquietRequest(settings.Name, from_channel, user, words[4])
+								continue
 							}
 							if strings.HasPrefix(query, "!") {
 
@@ -339,10 +347,20 @@ func irc_loop(settings *ServerConfig) {
 							if mention {
 								/* Skuzzy mentioned, process the command. */
 								log.Printf("Mentioned!\n")
+								query = strings.TrimLeft(query, "~")
+
 								nickPattern := `(?i)^` + regexp.QuoteMeta(settings.Nick) + `[:, ]*`
 								r, _ := regexp.Compile(nickPattern)
 								cleanQuery := r.ReplaceAllString(query, "")
-
+								first_word := strings.Split(query, " ")[0]
+								if strings.HasPrefix(first_word, "http://") || strings.HasPrefix(first_word, "https://") {
+									httpBody := HttpGetHead(first_word)
+									if len(httpBody) > 2 {
+										query = httpBody
+										cleanQuery = httpBody
+										log.Printf("Using http body from url %s:\n---\n%s\n---\n", first_word, httpBody)
+									}
+								}
 								if rListReminders.MatchString(cleanQuery) {
 									/* List reminders. */
 									send_irc(settings.Name, from_channel, ListReminders(settings, user))
@@ -569,5 +587,25 @@ func sendTopicHelp(settings *ServerConfig, target, user string) {
 	for _, v := range strings.Split(TopicHelp, "\n") {
 		send_irc(settings.Name, user, v)
 		time.Sleep(1 * time.Second)
+	}
+}
+
+func HandleQuietRequest(server, channel, user, target string) {
+	// we should really have a channel-specific feature flag-check here
+	// but for now any user that has a > 0 level can quiet anywhere
+	log.Printf("[HandleQuietRequest] %s asking to quiet '%s' in %s/%s", user, target, server, channel)
+	level := CTFUserLevel(server, channel, user)
+	if level > 0 {
+		send_irc(server, "ChanServ", fmt.Sprintf("QUIET %s %s", channel, target))
+	}
+}
+
+func HandleUnquietRequest(server, channel, user, target string) {
+	// we should really have a channel-specific feature flag-check here
+	// but for now any user that has a > 0 level can quiet anywhere
+	log.Printf("[HandleQuietRequest] %s asking to quiet '%s' in %s/%s", user, target, server, channel)
+	level := CTFUserLevel(server, channel, user)
+	if level > 0 {
+		send_irc(server, "ChanServ", fmt.Sprintf("UNQUIET %s %s", channel, target))
 	}
 }

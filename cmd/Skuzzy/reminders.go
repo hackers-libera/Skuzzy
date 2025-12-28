@@ -52,7 +52,11 @@ func AddReminder(settings *ServerConfig, reminder *Reminder) error {
 			reminder.User, settings.MaxRemindersPerUser))
 		return nil
 	}
-
+	delta := time.Now().Unix() - reminder.EndTime.Unix()
+	if delta < 1 || delta > (86400*7) {
+		send_irc(reminder.Server, reminder.Channel, "Sorry, I can only schedule between a range of 1 minute and 7 day window.")
+		return nil
+	}
 	/* Insert reminder into database. */
 	result, err := DB.Exec("INSERT INTO reminders (server, channel, user, message, end_time) "+
 		"VALUES (?, ?, ?, ?, ?)", reminder.Server, reminder.Channel, reminder.User, reminder.Message,
@@ -206,6 +210,11 @@ func LoadReminders(settings *ServerConfig) error {
 		if err := rows.Scan(&r.ID, &r.Server, &r.Channel, &r.User, &r.Message, &endTimeUnix); err != nil {
 			log.Printf("Error scanning reminder row: %v", err)
 			continue
+		}
+		delta := endTimeUnix - time.Now().Unix()
+		if delta < 1 || delta > (86400*7) {
+			log.Printf("Refusing to load a reminder that would trigger after %d seconds\n", delta)
+			return nil
 		}
 		r.EndTime = time.Unix(endTimeUnix, 0)
 		log.Printf("Loading reminder ID %d for %s: %s", r.ID, r.User, r.Message)

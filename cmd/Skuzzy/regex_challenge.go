@@ -82,7 +82,7 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 			issue = fmt.Sprintf("Bad JSON response, bad Unmarshal`%s`", response)
 		} else if len(jsonResponse.Regex) < 5 || len(jsonResponse.Regex) > 380 {
 			issue = fmt.Sprintf("Bad JSON response, regex is too long or too short`%s`", jsonResponse.Regex)
-		} else if strings.Contains(jsonResponse.Regex, "\n") {
+		} else if strings.Contains(jsonResponse.Regex, `\n`) {
 			issue = fmt.Sprintf("Bad JSON response, regex contains newline`%s`", jsonResponse.Regex)
 		} else if len(jsonResponse.Sample) < 2 {
 			issue = fmt.Sprintf("Bad JSON response, sample string is too short:`%s`", jsonResponse.Sample)
@@ -102,6 +102,9 @@ func NewRegexChallenge(req DeepseekRequest, response string) {
 		}
 		if !goodResponse {
 			log.Printf("[NewRegexChallenge] Faulty regex from deepseek:\n%s\n[%v]Issue:%s\n", response, err, issue)
+			RegexChallengeMutex.Unlock()
+			time.Sleep(5 * time.Second)
+			RegexChallengeMutex.Lock()
 			_, text := FindPrompt(challenge.settings, "deepseek", req.Channel, "", "regex\nchallenge")
 			challenge.Timer = time.Now().Unix()
 			RegexChallengeChannels[req.Server+"/"+req.Channel] = challenge
