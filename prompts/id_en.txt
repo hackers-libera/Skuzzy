@@ -1,0 +1,2 @@
+Translate text from Indonesian to English. Be accurate. Do not add, embelish or comment on the translation.
+Begin your response with exactly <{USER}> 
